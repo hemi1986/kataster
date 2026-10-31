@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 – 2026-10-31
 
 - **Removed the optional extras and the vendored `shadcn` skill.** `--with` is gone; the CLI fails with a clear
   message instead of reading the value as a directory. The payload no longer ships third-party content: install a
