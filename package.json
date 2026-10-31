@@ -7,11 +7,22 @@
     "opencode",
     "claude-code",
     "domain-driven-design",
+    "ddd",
+    "domain-model",
     "event-storming",
     "workflow",
     "scaffold"
   ],
   "license": "MIT",
+  "author": "Michael Schempp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hemi1986/kataster.git"
+  },
+  "homepage": "https://github.com/hemi1986/kataster#readme",
+  "bugs": {
+    "url": "https://github.com/hemi1986/kataster/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.18"
@@ -41,6 +52,7 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "test:install": "node --test test/install.test.mjs",
-    "doctor": "node bin/kataster.mjs doctor ."
+    "doctor": "node bin/kataster.mjs doctor .",
+    "prepublishOnly": "npm test"
   }
 }

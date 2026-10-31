@@ -229,11 +229,8 @@ function doctor(options) {
   add("Workflow installed", existsSync(join(root, ".claude", "skills")) && existsSync(join(root, ".opencode")), root);
   const manifest = readJson(join(root, ".claude", "install.json"));
   add("Install manifest", Boolean(manifest), manifest ? `version ${manifest.version}` : "missing – run init");
-  add(
-    "No leftovers from the old name",
-    !existsSync(join(root, ".laguardia")) && !existsSync(join(root, ".opencode", "plugins", "laguardia")),
-    "run upgrade to migrate them",
-  );
+  const leftovers = existsSync(join(root, ".laguardia")) || existsSync(join(root, ".opencode", "plugins", "laguardia"));
+  add("No leftovers from the old name", !leftovers, leftovers ? "run upgrade to migrate them" : "");
   const profile = readJson(join(root, ".claude", "project.json"));
   add("Project profile", Boolean(profile?.name), profile?.name ?? "missing");
 
