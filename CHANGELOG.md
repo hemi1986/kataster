@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 – 2026-10-31
 
 - **Renamed from La Guardia to Kataster.** The CLI is `npx kataster`, the state directory is `.kataster/`, the
   managed block markers are `kataster:*`, the OpenCode adapter lives in `.opencode/plugins/kataster/`, the env var is
