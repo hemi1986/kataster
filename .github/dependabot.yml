@@ -11,6 +11,11 @@ updates:
         patterns:
           - typescript
           - "@types/node"
+    ignore:
+      # Node typings follow the oldest runtime we support (engines: >=22.18), not the newest release –
+      # newer typings would type-check APIs that do not exist on Node 22.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
