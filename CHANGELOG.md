@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 – 2026-10-31
+
+- Releases are published from CI with npm trusted publishing (OIDC): pushing a `v*` tag runs the type check and the
+  test suite, verifies that the tag matches `package.json`, and publishes with provenance attestations – no token
+  in the repository, no one-time password. `guide/release.md` documents the setup and the manual fallback.
+- The repository is maintained in the open: `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull
+  request templates, Dependabot for the tooling dependencies and a protected `main` (pull request required, green
+  CI, squash only).
+
 ## 0.2.0 – 2026-10-31
 
 - **Renamed from La Guardia to Kataster.** The CLI is `npx kataster`, the state directory is `.kataster/`, the
