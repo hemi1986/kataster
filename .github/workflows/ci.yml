@@ -12,10 +12,11 @@ jobs:
       matrix:
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
+          package-manager-cache: false
       - run: npm install --prefix .claude --no-audit --no-fund
       - run: npm run typecheck --prefix .claude
       - run: npm test

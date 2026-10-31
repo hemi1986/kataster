@@ -1,0 +1,43 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  # OIDC: npm exchanges this for a short-lived publish token. No npm token in the repository.
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Check that the tag matches package.json
+        run: |
+          version="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+
+      - run: npm install --prefix .claude --no-audit --no-fund
+      - run: npm run typecheck --prefix .claude
+      - run: npm test
+
+      # Trusted publishing: the npm CLI detects the OIDC environment and authenticates itself.
+      # Provenance is generated automatically for a public package from a public repository.
+      # `prepublishOnly` runs the suite a second time – a red suite cannot be published.
+      - run: npm publish

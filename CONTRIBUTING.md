@@ -131,5 +131,6 @@ fixture in a temporary directory – never assert against this repository's own 
 ## Releasing
 
 Maintainers only. [guide/release.md](guide/release.md) has the steps: bump the version, move `Unreleased` in the
-changelog, run the tree check, install the tarball once, publish with 2FA, verify with `npx`, tag. `prepublishOnly`
-runs the test suite, so a red suite cannot be published.
+changelog, run the tree check, install the tarball once, then push a `v*` tag – CI publishes over OIDC with
+provenance, no token and no one-time password. `prepublishOnly` runs the test suite again, so a red suite cannot be
+published.
