@@ -1,0 +1,69 @@
+name: Bug report
+description: Something in the installer, a hook, a script or a skill does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A reproducible report is worth ten descriptions – the more of this you fill in, the
+        faster this gets fixed. Security problems go through
+        [SECURITY.md](https://github.com/hemi1986/kataster/blob/main/SECURITY.md), not through this form.
+
+  - type: input
+    id: version
+    attributes:
+      label: Kataster version
+      description: Output of `npx kataster --version`
+      placeholder: "0.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Harness
+      description: Where does the problem show up?
+      options:
+        - Claude Code
+        - OpenCode
+        - Neither – the CLI itself (`init`, `upgrade`, `doctor`)
+      multiple: true
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Node version, OS, and the harness version
+      placeholder: "Node 24.13.1, macOS 15.2, Claude Code 2.x"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The command or prompt you ran, what you got, and what you expected instead.
+      placeholder: |
+        `kataster upgrade` in a repository with a custom hook printed …
+        Expected: the hook survives.
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `kataster doctor`
+      description: In the affected repository. Redact paths, project names and secrets.
+      render: text
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How was it installed?
+      options:
+        - npx
+        - global npm install
+        - local devDependency
+        - cloned this repository and ran `bin/kataster.mjs`

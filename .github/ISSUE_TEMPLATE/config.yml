@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/hemi1986/kataster/security/advisories/new
+    about: Report a vulnerability privately – never in a public issue.
+  - name: Usage question
+    url: https://github.com/hemi1986/kataster/blob/main/guide/install.md
+    about: Install, upgrade and troubleshooting are covered in the guide.
+  - name: Contributing
+    url: https://github.com/hemi1986/kataster/blob/main/CONTRIBUTING.md
+    about: How to work on the toolkit, the payload rules and the release process.

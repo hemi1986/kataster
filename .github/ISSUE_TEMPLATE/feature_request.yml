@@ -1,0 +1,61 @@
+name: Feature request
+description: A skill, command, agent, detection case or installer behaviour that is missing
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Kataster is small on purpose – every skill is a prompt that runs in people's repositories, so a new one has
+        to earn its place. The strongest requests describe a situation where the current workflow produced a wrong
+        or unusable result.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and where does the workflow get in the way today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do instead today
+      description: A workaround, a manual step, another tool – this is the baseline the feature has to beat.
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would expect
+      description: A command, a skill, a flag, a detection case. Shape and wording are open; the outcome is not.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Discovery (`/bootstrap`, `/adopt`, event storming, domain model)
+        - Delivery (`/feature`, `/shape`, `/review-stories`, `/implement`)
+        - Backlog (`/backlog-sync`, `/groom-backlog`, local/GitHub/Jira)
+        - Installer (`init`, `upgrade`, `doctor`, stack and monorepo detection)
+        - Hooks and guardrails
+        - Docs
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: harness
+    attributes:
+      label: Harness
+      options:
+        - label: Claude Code
+        - label: OpenCode
+        - label: Both / harness-independent
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including "do nothing" – why is the current behaviour not acceptable?
