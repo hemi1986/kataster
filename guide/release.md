@@ -77,7 +77,8 @@ npx kataster@latest --version
 ```
 
 The package page shows a provenance badge (`built and signed on GitHub Actions`) and the workflow run is linked to
-the tag. A missing badge means the publish did not go through trusted publishing.
+the tag. A missing badge means the publish did not go through trusted publishing. The registry can take a minute or
+two before a new version appears; `npm view kataster version` is the source of truth, not the cache in `npx`.
 
 ## What ships
 
