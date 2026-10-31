@@ -320,6 +320,13 @@ The name is a historical reference, not a domain: the workflow has none of its o
 was removed when the package was extracted – the examples are neutral, the stack is detected, and the language is
 yours.
 
+## Contributing
+
+The toolkit is maintained in the open: bug reports, a skill that fills a real gap and sharper prompts are welcome.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the payload rules and the release process;
+[SECURITY.md](SECURITY.md) is the way to report a vulnerability privately. Participation is covered by the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 MIT
