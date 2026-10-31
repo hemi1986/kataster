@@ -300,3 +300,11 @@ test("upgrade drops an extras field left in the profile", () => {
   assert.equal(upgraded.code, 0, upgraded.out);
   assert.equal(json(dir, ".claude/project.json").workflow.extras, undefined);
 });
+
+test("installs the third-party notices with the payload", () => {
+  const dir = repo({ "package.json": "{}" });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  const notices = read(dir, ".claude/THIRD_PARTY_NOTICES.md");
+  assert.match(notices, /Matt Pocock/);
+  assert.match(notices, /MIT License/);
+});

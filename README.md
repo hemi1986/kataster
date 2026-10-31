@@ -323,6 +323,21 @@ The toolkit is maintained in the open: bug reports, a skill that fills a real ga
 [SECURITY.md](SECURITY.md) is the way to report a vulnerability privately. Participation is covered by the
 [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## Credits
+
+Kataster stands on other people's work:
+
+- **Matt Pocock** – [skills](https://github.com/mattpocock/skills), [aihero.dev](https://www.aihero.dev). The grilling
+  interview (`grilling`, `grill-me`, `grill-with-docs`), test-driven development (`tdd`), the deep-module vocabulary
+  (`codebase-design`), the architecture survey (`improve-codebase-architecture`), the retro, the domain-modeling
+  discipline and `writing-for-agents` come from his skill repository – partly adapted, partly copied verbatim under
+  MIT. The per-file mapping and the license text are in
+  [.claude/THIRD_PARTY_NOTICES.md](.claude/THIRD_PARTY_NOTICES.md).
+- **John Ousterhout**, *A Philosophy of Software Design* – "Design It Twice" and the depth, seam and deletion-test
+  vocabulary.
+- **Eric Evans**, *Domain-Driven Design* – ubiquitous language, bounded contexts, aggregates.
+- **Martin Fowler** – the smell baseline the review agents work from.
+
 ## License
 
 MIT

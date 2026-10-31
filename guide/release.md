@@ -11,7 +11,7 @@
 npm install --prefix .claude --no-audit --no-fund
 npm run typecheck --prefix .claude
 npm test
-npm pack --dry-run        # 147 files, 215 kB – no examples/, no node_modules, no state/
+npm pack --dry-run        # 148 files, 218 kB – no examples/, no node_modules, no state/
 ```
 
 4. Install the tarball once and start a throwaway project with it – a tarball that installs is not the same as a

@@ -58,6 +58,9 @@ question.
    upgrade tells "ours, unmodified" from "the user edited this".
 4. **No hidden state, no network at install time.** `init` reads the repository, writes files and asks four
    questions. Anything that needs the network (a backlog sync, a Jira fetch) belongs behind an explicit command.
+5. **Third-party content is credited.** A skill, prompt or script taken from elsewhere goes into
+   `.claude/THIRD_PARTY_NOTICES.md` with source, license, and whether it is copied or adapted – and its license text
+   stays in that file, because the notice has to travel with every installed copy. The file ships with the payload.
 
 ## Adding to the payload
 

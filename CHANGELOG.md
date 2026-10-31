@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Credit where the workflow comes from.** `.claude/THIRD_PARTY_NOTICES.md` lists which skills are derived from
+  [Matt Pocock's skills](https://github.com/mattpocock/skills) – some adapted, some copied verbatim – and carries his
+  MIT license text. The file ships with the payload and lands in every installation; the README has a Credits
+  section.
+
 ## 0.3.0 – 2026-10-31
 
 - **Removed the optional extras and the vendored `shadcn` skill.** `--with` is gone; the CLI fails with a clear
