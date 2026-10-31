@@ -341,19 +341,6 @@ export class Installer {
     });
   }
 
-  installExtras(names = []) {
-    for (const name of names) {
-      const source = join(PKG, "extras", "skills", name);
-      if (!existsSync(source)) {
-        this.record("skip", source, `unknown extra '${name}'`);
-        continue;
-      }
-      for (const file of walk(source)) {
-        this.put(join(this.root, ".claude", "skills", name, relative(source, file)), read(file));
-      }
-    }
-  }
-
   installToolingDependencies() {
     if (this.dryRun) return { ok: true, skipped: true };
     if (!existsSync(join(this.root, ".claude", "package.json"))) return { ok: true, skipped: true };

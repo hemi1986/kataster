@@ -1,12 +1,12 @@
 # Kataster – development entry point
 
-This repository is the **toolkit**, not an installation of it. `.claude/`, `.opencode/`, `templates/` and
-`extras/` are the payload that `npx kataster init` copies into a target repository.
+This repository is the **toolkit**, not an installation of it. `.claude/`, `.opencode/` and `templates/` are the
+payload that `npx kataster init` copies into a target repository.
 
 - **Installer:** `src/cli.mjs` (commands, prompts), `src/install.mjs` (copy, merge, manifest, upgrade),
   `src/detect.mjs` (stack detection), `src/repo.mjs` (monorepo tooling and workspaces), `src/util.mjs`.
 - **Payload:** `.claude/` (skills, agents, hooks, lib, settings), `.opencode/` (commands, agents, plugin),
-  `templates/` (docs skeleton, project profile defaults, conventions template), `extras/` (optional skills).
+  `templates/` (docs skeleton, project profile defaults, conventions template).
 - **Tests:** `npm test` (installs into temp directories and asserts the result).
 - **Docs for users:** `README.md` and `guide/`.
 

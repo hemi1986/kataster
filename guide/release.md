@@ -11,7 +11,7 @@
 npm install --prefix .claude --no-audit --no-fund
 npm run typecheck --prefix .claude
 npm test
-npm pack --dry-run        # 162 files, 256 kB – no examples/, no node_modules, no state/
+npm pack --dry-run        # 147 files, 215 kB – no examples/, no node_modules, no state/
 ```
 
 4. Install the tarball once and start a throwaway project with it – a tarball that installs is not the same as a
@@ -86,7 +86,7 @@ two before a new version appears; `npm view kataster version` is the source of t
 
 - `bin/`, `src/` – the CLI and installer
 - `.claude/`, `.opencode/` – the payload the installer copies
-- `templates/`, `extras/` – docs skeleton and optional skills
+- `templates/` – docs skeleton
 - `guide/`, `README.md`, `AGENTS.md`, `CHANGELOG.md`, `LICENSE`
 
 Not shipped: `test/`, `examples/`, `.github/`. `examples/` contains project-specific facts and is reference material

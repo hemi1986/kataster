@@ -157,7 +157,7 @@ export function detectProject(root) {
   };
 }
 
-export function buildProfile(root, { name, kind, uiLanguage, artifactLanguage, detection, extras = [], backlog = "local", jiraProject = "", githubRepo = "" }) {
+export function buildProfile(root, { name, kind, uiLanguage, artifactLanguage, detection, backlog = "local", jiraProject = "", githubRepo = "" }) {
   const stackSummary = [
     ...detection.languages,
     ...detection.frameworks,
@@ -230,7 +230,6 @@ export function buildProfile(root, { name, kind, uiLanguage, artifactLanguage, d
     },
     workflow: {
       version: "0.1.0",
-      extras,
       installedAt: new Date().toISOString(),
     },
   };

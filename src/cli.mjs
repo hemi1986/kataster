@@ -25,7 +25,6 @@ Options:
   --backlog <provider>  Where stories live: local (default), github, jira
   --jira-project <key>  Jira project key (with --backlog jira)
   --github-repo <repo>  GitHub repository owner/name (with --backlog github; default: this repo)
-  --with <list>         Optional extras, comma-separated (available: shadcn)
   --force               Overwrite locally modified workflow files (backup is kept)
   --no-install          Do not run "npm install --prefix .claude"
   --yes, -y             Non-interactive: accept the detected defaults
@@ -34,7 +33,7 @@ Options:
 
 function parse(argv) {
   const options = { _: [] };
-  const takesValue = new Set(["name", "ui-language", "artifacts", "with", "backlog", "jira-project", "github-repo"]);
+  const takesValue = new Set(["name", "ui-language", "artifacts", "backlog", "jira-project", "github-repo"]);
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (!arg.startsWith("-")) {
@@ -49,6 +48,9 @@ function parse(argv) {
     else if (arg === "--no-install") options.noInstall = true;
     else if (arg === "--yes" || arg === "-y") options.yes = true;
     else if (arg === "--dry-run") options.dryRun = true;
+    else if (arg === "--with" || arg.startsWith("--with=")) {
+      throw new Error("--with was removed in 0.3.0 – install an extra such as shadcn/ui directly in your project.");
+    }
     else if (arg.startsWith("--") && arg.includes("=")) {
       const [key, ...rest] = arg.slice(2).split("=");
       options[camel(key)] = rest.join("=");
@@ -104,9 +106,9 @@ Useful commands afterwards:
 `);
 }
 
-function printSummary(installer, extras) {
+function printSummary(installer) {
   const { created, updated, conflicts } = installer.summary();
-  console.log(`\nDone: ${created} created, ${updated} updated${extras.length ? `, extras: ${extras.join(", ")}` : ""}.`);
+  console.log(`\nDone: ${created} created, ${updated} updated.`);
   if (conflicts.length) {
     console.log(`\n${conflicts.length} file(s) kept because they were modified locally:`);
     for (const c of conflicts) console.log(`  - ${c}`);
@@ -117,7 +119,6 @@ function printSummary(installer, extras) {
 async function init(options) {
   const root = resolve(options._[1] ?? ".");
   const detection = detectProject(root);
-  const extras = String(options.with ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
   banner();
   if (existsSync(join(root, ".claude", "install.json"))) {
@@ -147,7 +148,7 @@ async function init(options) {
     : "";
 
   const profile = buildProfile(root, {
-    name, kind, uiLanguage, artifactLanguage, detection, extras,
+    name, kind, uiLanguage, artifactLanguage, detection,
     backlog, jiraProject, githubRepo,
   });
   profile.workflow.version = VERSION;
@@ -163,7 +164,6 @@ async function init(options) {
   installer.putClaudeMd(profile);
   installer.putProfile(profile);
   installer.putConventions(profile);
-  installer.installExtras(extras);
   installer.updateGitignore();
   installer.writeManifest();
 
@@ -177,7 +177,7 @@ async function init(options) {
     if (!result.ok) console.log("\nTooling dependencies could not be installed – run: npm install --prefix .claude");
   }
 
-  printSummary(installer, extras);
+  printSummary(installer);
   nextSteps(root, profile);
 }
 
@@ -190,7 +190,6 @@ async function upgrade(options) {
     return init({ ...options, _: ["init", root] });
   }
   const profile = readJson(join(root, ".claude", "project.json")) ?? {};
-  const extras = options.with ? String(options.with).split(",").map((s) => s.trim()).filter(Boolean) : profile.workflow?.extras ?? [];
 
   console.log(`Upgrading ${root} from ${installer.manifest.version ?? "?"} to ${VERSION}\n`);
   installer.migrateLegacy();
@@ -202,12 +201,12 @@ async function upgrade(options) {
   installer.putContext(profile);
   installer.putClaudeMd(profile);
   installer.putConventions(profile);
-  installer.installExtras(extras);
   installer.updateGitignore();
   installer.writeManifest();
 
   if (profile.name && !options.dryRun) {
-    profile.workflow = { ...(profile.workflow ?? {}), version: VERSION, extras };
+    profile.workflow = { ...(profile.workflow ?? {}), version: VERSION };
+    delete profile.workflow.extras;
     write(join(root, ".claude", "project.json"), `${JSON.stringify(profile, null, 2)}\n`);
   }
 
@@ -216,7 +215,7 @@ async function upgrade(options) {
     return;
   }
   if (!options.noInstall) installer.installToolingDependencies();
-  printSummary(installer, extras);
+  printSummary(installer);
   console.log("\nUpgrade complete. Project content (CONTEXT.md, docs/domain, docs/stories, ADRs) was not touched.");
 }
 

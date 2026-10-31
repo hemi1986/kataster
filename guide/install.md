@@ -15,7 +15,6 @@ npx kataster init [dir]
 | `--backlog <provider>` | Where stories live: `local` (default), `github`, `jira` |
 | `--jira-project <key>` | Jira project key (with `--backlog jira`) |
 | `--github-repo <repo>` | `owner/name` for a GitHub backlog (default: the current repository) |
-| `--with <list>` | Optional extras, comma-separated (`shadcn`) |
 | `--yes`, `-y` | Non-interactive: accept the detected defaults |
 | `--no-install` | Skip `npm install --prefix .claude` |
 | `--dry-run` | Show what would happen, write nothing |
@@ -57,7 +56,8 @@ npx kataster upgrade
   rewritten. `backlog.labelPrefix` in `project.json` is kept, so labels already in GitHub or Jira stay valid.
 - An existing `project.json` keeps its content. If it predates the backlog backend, add the `backlog` section by hand
   (see the README) – without it the provider stays `local`.
-- `--with` can add extras on upgrade.
+- An extra installed by an older version (`--with shadcn`, up to 0.2.1) stays on disk as a project file; upgrade no
+  longer touches it. Delete `.claude/skills/shadcn/` if you do not want it.
 
 ## Harness setup
 

@@ -274,3 +274,29 @@ test("rejects an unknown backlog backend", () => {
   assert.notEqual(result.code, 0);
   assert.match(result.out, /Unknown backlog backend 'linear'/);
 });
+
+test("no longer installs extras and rejects the removed --with flag", () => {
+  const dir = repo({ "package.json": "{}" });
+  const rejected = run(["--with", "shadcn", "init", dir, "--yes"]);
+  assert.notEqual(rejected.code, 0);
+  assert.match(rejected.out, /--with was removed/);
+  // The value after --with must not be read as the target directory.
+  assert.equal(existsSync(join(dir, ".claude")), false);
+
+  const installed = run(["init", dir, "--yes", "--no-install"]);
+  assert.equal(installed.code, 0, installed.out);
+  assert.equal(existsSync(join(dir, ".claude", "skills", "shadcn")), false);
+});
+
+test("upgrade drops an extras field left in the profile", () => {
+  const dir = repo({ "package.json": "{}" });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  const profilePath = join(dir, ".claude", "project.json");
+  const profile = JSON.parse(readFileSync(profilePath, "utf8"));
+  profile.workflow.extras = ["shadcn"];
+  writeFileSync(profilePath, JSON.stringify(profile, null, 2), "utf8");
+
+  const upgraded = run(["upgrade", dir, "--no-install"]);
+  assert.equal(upgraded.code, 0, upgraded.out);
+  assert.equal(json(dir, ".claude/project.json").workflow.extras, undefined);
+});

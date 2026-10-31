@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Removed the optional extras and the vendored `shadcn` skill.** `--with` is gone; the CLI fails with a clear
+  message instead of reading the value as a directory. The payload no longer ships third-party content: install a
+  UI skill such as shadcn/ui in the project that needs it. An installation made with `--with shadcn` keeps the files
+  under `.claude/skills/shadcn/`; `upgrade` leaves them alone and drops the stale `workflow.extras` field from
+  `.claude/project.json`.
+
 ## 0.2.1 – 2026-10-31
 
 - Releases are published from CI with npm trusted publishing (OIDC): pushing a `v*` tag runs the type check and the

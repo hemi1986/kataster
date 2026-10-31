@@ -40,7 +40,6 @@
     "bin",
     "src",
     "templates",
-    "extras",
     "guide",
     ".claude",
     ".opencode",

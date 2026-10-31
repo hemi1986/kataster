@@ -301,10 +301,6 @@ npx kataster doctor
 overwrite files you changed locally – it lists them instead. `--force` overwrites and writes a backup to
 `.kataster/backup/`.
 
-## Optional extras
-
-- `--with shadcn` installs the shadcn/ui skill for projects that use it.
-
 ## Design notes
 
 - **`.claude/` is the source of truth.** OpenCode and Claude Code share skills, agents and hooks; `.opencode/` is an
