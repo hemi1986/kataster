@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // The workflow itself lives in .claude/ and is shared with Claude Code.
+  // .opencode/ holds the OpenCode wiring: agents, commands, the hook adapter plugin.
+  //
+  // Permissions: the hard blocks (force push, production deploy, destructive database
+  // commands, generated files, accepted ADRs) are enforced by
+  // .opencode/plugins/kataster/index.ts, which runs the .claude/hooks/*.ts scripts.
+  // Per-agent write scopes are expressed as `edit` permissions in .opencode/agents/*.md.
+
+  "watcher": {
+    "ignore": ["**/node_modules/**", "**/.next/**", "**/dist/**", "**/coverage/**"]
+  }
+}

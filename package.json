@@ -1,0 +1,46 @@
+{
+  "name": "kataster",
+  "version": "0.2.0",
+  "description": "Agent workflow for domain-driven discovery and delivery – drop it into a greenfield or brownfield repository and build the domain by grilling.",
+  "keywords": [
+    "agents",
+    "opencode",
+    "claude-code",
+    "domain-driven-design",
+    "event-storming",
+    "workflow",
+    "scaffold"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "kataster": "./bin/kataster.mjs"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": "./src/install.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "templates",
+    "extras",
+    "guide",
+    ".claude",
+    ".opencode",
+    "AGENTS.md",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:install": "node --test test/install.test.mjs",
+    "doctor": "node bin/kataster.mjs doctor ."
+  }
+}

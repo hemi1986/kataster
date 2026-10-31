@@ -1,0 +1,21 @@
+{
+  "name": "kataster-tooling",
+  "private": true,
+  "description": "Validators, renderers and hooks for the Kataster discovery workflow",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "validate": "node skills/event-storming/scripts/validate-events.ts && node skills/user-stories/scripts/validate-stories.ts",
+    "render": "node skills/event-storming/scripts/render-event-storming.ts && node skills/user-stories/scripts/render-backlog.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  }
+}

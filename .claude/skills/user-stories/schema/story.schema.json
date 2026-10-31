@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Story frontmatter (docs/stories/ST-NNN-*.md)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "type", "context", "priority", "status"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^ST-[0-9]{3,}$" },
+    "title": { "type": "string", "minLength": 5, "maxLength": 120 },
+    "type": { "enum": ["story", "spike", "tech-task"] },
+    "context": { "type": "string", "pattern": "^BC-[A-Za-z0-9]+$" },
+    "priority": { "enum": ["must", "should", "could", "wont"] },
+    "size": { "enum": ["XS", "S", "M", "L", "XL", null] },
+    "risk": { "enum": ["low", "medium", "high", null] },
+    "events": {
+      "type": "array", "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^EVT-[A-Za-z0-9]+$" }
+    },
+    "depends_on": {
+      "type": "array", "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^ST-[0-9]{3,}$" }
+    },
+    "labels": {
+      "type": "array", "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9:_-]*$" }
+    },
+    "external": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "key"],
+      "properties": {
+        "provider": { "enum": ["github", "jira"] },
+        "key": { "type": "string", "minLength": 1 },
+        "url": { "type": "string" }
+      }
+    },
+    "status": { "enum": ["draft", "review", "ready", "in-progress", "done", "superseded"] }
+  }
+}

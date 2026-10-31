@@ -1,0 +1,23 @@
+# Event storming model
+#
+# Single source of truth for events, commands, policies, read models, aggregates and bounded contexts.
+# Format: .claude/skills/event-storming/templates/events.example.yaml
+# Schema: .claude/skills/event-storming/schema/events.schema.json
+#
+# Written by /bootstrap, /adopt, /event-storming and /feature. Validated and rendered to
+# docs/domain/event-storming.md after every write. An empty model is valid: it grows during discovery.
+
+version: 1
+domain: {{project}}
+
+events: []
+
+# actors: []
+# external_systems: []
+# bounded_contexts: []
+# aggregates: []
+# commands: []
+# policies: []
+# read_models: []
+# hotspots: []
+# flows: []

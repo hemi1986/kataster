@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Event storming model (docs/domain/events.yaml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "domain", "events"],
+  "properties": {
+    "version": { "const": 1 },
+    "domain": { "type": "string", "minLength": 1 },
+    "actors": { "type": "array", "items": { "$ref": "#/$defs/actor" } },
+    "external_systems": { "type": "array", "items": { "$ref": "#/$defs/external" } },
+    "bounded_contexts": { "type": "array", "items": { "$ref": "#/$defs/context" } },
+    "aggregates": { "type": "array", "items": { "$ref": "#/$defs/aggregate" } },
+    "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+    "commands": { "type": "array", "items": { "$ref": "#/$defs/command" } },
+    "policies": { "type": "array", "items": { "$ref": "#/$defs/policy" } },
+    "read_models": { "type": "array", "items": { "$ref": "#/$defs/readModel" } },
+    "hotspots": { "type": "array", "items": { "$ref": "#/$defs/hotspot" } },
+    "flows": { "type": "array", "items": { "$ref": "#/$defs/flow" } }
+  },
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "idList": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "actor": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^ACT-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "description": { "type": "string" }
+      }
+    },
+    "external": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^EXT-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "description": { "type": "string" }
+      }
+    },
+    "context": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "purpose"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^BC-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "purpose": { "$ref": "#/$defs/text" }
+      }
+    },
+    "aggregate": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^AGG-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "context": { "type": "string" },
+        "invariants": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "description": { "type": "string" }
+      }
+    },
+    "event": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^EVT-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "aggregate": { "type": "string" },
+        "context": { "type": "string" },
+        "origin": { "enum": ["command", "external", "time"] },
+        "pivotal": { "type": "boolean" },
+        "data": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "description": { "type": "string" }
+      }
+    },
+    "command": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "produces"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^CMD-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "actor": { "type": "string" },
+        "aggregate": { "type": "string" },
+        "produces": { "$ref": "#/$defs/idList", "minItems": 1 },
+        "rules": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "description": { "type": "string" }
+      }
+    },
+    "policy": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "when", "then"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^POL-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "when": { "$ref": "#/$defs/idList" },
+        "then": { "$ref": "#/$defs/idList" },
+        "description": { "type": "string" }
+      }
+    },
+    "readModel": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "fed_by"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^RM-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "fed_by": { "$ref": "#/$defs/idList" },
+        "used_by": { "$ref": "#/$defs/idList" },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+        "description": { "type": "string" }
+      }
+    },
+    "hotspot": {
+      "type": "object", "additionalProperties": false, "required": ["id", "question"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^HS-[0-9]+$" },
+        "question": { "$ref": "#/$defs/text" },
+        "refs": { "$ref": "#/$defs/idList" },
+        "status": { "enum": ["open", "resolved"] },
+        "resolution": { "type": "string" }
+      }
+    },
+    "flow": {
+      "type": "object", "additionalProperties": false, "required": ["id", "name", "sequence"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^FLOW-[A-Za-z0-9]+$" },
+        "name": { "$ref": "#/$defs/text" },
+        "description": { "type": "string" },
+        "sequence": { "$ref": "#/$defs/idList", "minItems": 1 }
+      }
+    }
+  }
+}

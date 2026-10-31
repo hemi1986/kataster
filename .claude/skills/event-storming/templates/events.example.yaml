@@ -1,0 +1,91 @@
+# FORMAT EXAMPLE (unrelated domain: bike rental). Copy the structure only!
+version: 1
+domain: Bike Rental
+
+actors:
+  - id: ACT-Customer
+    name: Customer
+  - id: ACT-Mechanic
+    name: Mechanic
+
+external_systems:
+  - id: EXT-Payment
+    name: Payment provider
+
+bounded_contexts:
+  - id: BC-Rental
+    name: Rental
+    purpose: Renting out and returning bikes
+  - id: BC-Workshop
+    name: Workshop
+    purpose: Maintaining the fleet
+
+aggregates:
+  - id: AGG-Bike
+    name: Bike
+    context: BC-Rental
+    invariants:
+      - A bike can only be rented out once at a time
+      - A bike marked as damaged cannot be rented out
+  - id: AGG-RepairOrder
+    name: Repair order
+    context: BC-Workshop
+
+events:
+  - id: EVT-BikeRented
+    name: Bike rented
+    aggregate: AGG-Bike
+    pivotal: true
+    data: [Bike number, Customer, Start time]
+  - id: EVT-DamageReported
+    name: Damage reported
+    aggregate: AGG-Bike
+    data: [Bike number, Description, Photo]
+  - id: EVT-RepairOrderOpened
+    name: Repair order opened
+    aggregate: AGG-RepairOrder
+  - id: EVT-InspectionDue
+    name: Inspection due
+    origin: time
+    context: BC-Workshop
+
+commands:
+  - id: CMD-RentBike
+    name: Rent bike
+    actor: ACT-Customer
+    aggregate: AGG-Bike
+    produces: [EVT-BikeRented]
+    rules: [Customer has a valid payment method]
+  - id: CMD-ReportDamage
+    name: Report damage
+    actor: ACT-Customer
+    aggregate: AGG-Bike
+    produces: [EVT-DamageReported]
+  - id: CMD-OpenRepairOrder
+    name: Open repair order
+    aggregate: AGG-RepairOrder
+    produces: [EVT-RepairOrderOpened]
+
+policies:
+  - id: POL-DamageCreatesRepair
+    name: Damage creates repair order
+    when: [EVT-DamageReported, EVT-InspectionDue]
+    then: [CMD-OpenRepairOrder]
+
+read_models:
+  - id: RM-AvailableBikes
+    name: Available bikes
+    fed_by: [EVT-BikeRented, EVT-DamageReported]
+    used_by: [ACT-Customer]
+    fields: [Bike number, Location, Type]
+
+hotspots:
+  - id: HS-1
+    question: May a bike with reported minor damage still be rented out?
+    refs: [EVT-DamageReported, AGG-Bike]
+    status: open
+
+flows:
+  - id: FLOW-DamageToRepair
+    name: From damage to repair
+    sequence: [ACT-Customer, CMD-ReportDamage, EVT-DamageReported, POL-DamageCreatesRepair, CMD-OpenRepairOrder, EVT-RepairOrderOpened]
