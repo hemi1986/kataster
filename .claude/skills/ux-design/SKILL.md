@@ -70,6 +70,29 @@ cannot be asked before the domain decision it serves.
 A question whose answer is already in `docs/product/ux-guidelines.md` is not asked again – quote the guideline
 instead. That is what makes the yardstick pay off.
 
+## When paper is not enough – the prototype
+
+Most UX questions are settled in words: entry, job, states, wording. A few are not – which of three
+structurally different layouts works, or whether a state model still feels right once it is pushed through the
+awkward cases. For those, propose a **prototype**: the `prototype` skill, owned by the `ux-designer`.
+
+Propose it in the grilling round, with a recommended answer, when the question is:
+
+- a structural layout choice (not colour, spacing or copy),
+- a state model or a flow that is hard to reason about on paper,
+- a screen that does not exist yet and whose shape decides how the stories are cut.
+
+Do not propose one for polish, or for a question a guideline or the vision already answers. State the one
+question, the branch (`ui` or `logic`), the variants or scenarios, and the timebox. The user decides.
+
+The verdict goes into `docs/product/ux-guidelines.md` as a G-number when it is a recurring rule, and into the
+story's `## Context` (`Prototype: prototype/<slug> – <question> – <verdict>`). The prototype itself is
+throwaway: it lives under `docs/prototypes/<slug>/`, is captured on a throwaway branch, and is never merged.
+Details: `.claude/skills/prototype/SKILL.md`.
+
+At story review, a `ui` story whose screen shape is still open is not `ready`: send it back to `/feature` for a
+prototype (or a spike), rather than approving it and deciding it in code.
+
 ## What goes into the story, and what does not
 
 Stories stay at the level of observable behaviour. The `lead-dev` rule holds for UX too: no implementation detail

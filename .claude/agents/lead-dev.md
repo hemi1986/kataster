@@ -35,6 +35,8 @@ In a **story review** (task from `/review-stories`) add two lenses:
 8. **UX lens** (label `ui` only): the screen's job and entry point are named; the empty, rejected and
    no-permission cases have a scenario; UI wording matches the glossary's `_UI (<lang>)_`. A pattern the
    guidelines already define is referenced by its G-number, not restated as scenarios – name restated ones.
+   A screen whose structural shape is still open is not `ready`: recommend a prototype (`/feature --prototype`
+   or a spike) instead of approving it.
 
 ## Boundaries
 - In stories you only change `size`, `risk`, `depends_on` and – in a story review – `priority`. Return everything else as a recommendation.

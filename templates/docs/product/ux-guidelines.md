@@ -4,6 +4,8 @@
   The yardstick, not the method. The method is `.claude/skills/ux-design/SKILL.md`.
   Every guideline is a rule someone can point at, with the date and the reason it was decided.
   `ux-designer` maintains this file; the user approves a guideline before it is written here.
+  A prototype verdict that becomes a recurring rule lands here as a G-number; the prototype itself stays on
+  its throwaway branch (`docs/prototypes/<slug>/`).
 
   Format:
   ## G1 – <short rule>

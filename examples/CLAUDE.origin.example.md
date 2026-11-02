@@ -36,6 +36,7 @@ La Guardia is software for the pinball museum to manage its pinball machines: re
 | `/event-storming`, `/feature` | discovery entry points (see workflow); both start by grilling |
 | `user-stories`, `/review-stories` | story format, validation, review |
 | `ux-design` | how we decide the interface: the UX frontier to grill, what a story says about a screen, review order |
+| `prototype` | throwaway HTML prototype for a UI or logic question; the verdict goes into the story and the guidelines |
 | `/groom-backlog` | periodic challenge of the open backlog: still worth building, dependencies, priorities |
 | `/implement` | engineering entry point: one story test-first, verify, review, refactor, acceptance by the acceptance tester |
 | `tdd` | red → green loop, good tests, seams |
@@ -72,7 +73,7 @@ Initial discovery:
 4. `/review-stories` – one lead-dev pass (value, build, UX), user approves → `status: ready`
 5. Hand-off: `docs/stories/BACKLOG.md` lists all `ready` stories in implementation order for the engineering workflow
 
-Later features and changes: `/feature <idea>` – grills the idea, runs a focused event storming, updates domain model/ADRs, derives stories (label `feature:<slug>`) and runs the story review on them – the user approves in that review.
+Later features and changes: `/feature <idea>` – grills the idea, runs a focused event storming, updates domain model/ADRs, derives stories (label `feature:<slug>`) and runs the story review on them – the user approves in that review. `--prototype` adds a throwaway prototype between grilling and the stories when a UI, flow or state question cannot be settled on paper.
 
 Engineering, story by story: `/implement [ST-NNN]` (empty = next ready story whose dependencies are done):
 1. Prepare – branch, `in-progress`, context pack from the discovery artifacts

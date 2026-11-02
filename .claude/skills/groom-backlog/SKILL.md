@@ -50,7 +50,8 @@ Start in **one** message, with the full file paths, the scope and the change lis
   smaller because the foundation is there, which bigger? Which dependency is technical fiction? Which story should
   be split, merged or dropped?
 - `ux-designer` – only for stories with the label `ui` (or an obvious frontend part): does the story still match
-  `docs/product/ux-guidelines.md`, and which one builds a screen that a newer story has replaced?
+  `docs/product/ux-guidelines.md`, which one builds a screen that a newer story has replaced, and is there an open
+  UX question that needs a prototype (the `prototype` skill) before the story can be reviewed again?
 
 Tell each one explicitly: **recommend, don't rewrite** – they change only the frontmatter fields they own
 (`priority` for the PO, `size`/`risk`/`depends_on` for the lead dev), everything else comes back as a proposal.

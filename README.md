@@ -92,6 +92,8 @@ docs/
   workflow.md           the map: sources of truth, commands, phases, rules
   product/vision.md     the vision, grilled with you
   product/initiatives/  proposals for large ideas from /shape (no stories)
+  product/ux-guidelines.md   the interface yardstick
+  prototypes/           throwaway prototypes on their own branch; the default branch keeps the README
   domain/events.yaml    the event storming model (empty is valid)
   domain/context-map.md
   architecture/data-model.md
@@ -114,12 +116,12 @@ Existing `CONTEXT.md` and `docs/` are never touched.
 | `/grill-me` | Relentless interview on a plan, decision or idea |
 | `/grill-with-docs` | The same, writing glossary and ADRs as you go |
 | `/event-storming [process]` | Big-picture or single-process event storming |
-| `/feature <idea \| ST-NNN \| #123 \| PROJ-123>` | New feature from an idea, an existing story or a ticket: intake and routing, grilling, focused storming, model, stories, review; bugs become a regression story |
+| `/feature <idea \| ST-NNN \| #123 \| PROJ-123>` | New feature from an idea, an existing story or a ticket: intake and routing, grilling, focused storming, model, stories, review; bugs become a regression story; `--prototype` adds a throwaway prototype before the stories |
 | `/shape <idea \| ticket> [--dry-run]` | Before a large feature: frame, place (existing/new context, shared library), impact, slices, rough cost range, recommendation; creates no stories |
 | `/review-stories [ST-…]` | One lead-dev pass (value, build, UX) before a story is `ready` |
 | `/backlog-sync [status\|pull\|push]` | Keep `docs/stories/` in sync with GitHub Issues or Jira |
 | `/groom-backlog [scope]` | Periodic challenge: is this backlog still worth building? |
-| `/implement [ST-NNN]` | Test-first implementation of one story, review, refactor, PR |
+| `/implement [ST-NNN]` | Test-first implementation of one story, review, refactor, PR; `--prototype` prototypes an open UI question first |
 | `/improve-codebase-architecture` | Scan for deepening opportunities, present them, grill one |
 | `/retro` | Retrospective on a session, proposing rule changes |
 
@@ -148,6 +150,21 @@ slice 1, spike first, needs discovery, park or no-go. It creates **no stories**;
 The brief lands in `docs/product/initiatives/<slug>.md` (`proposed` until you accept it). A new service in an
 existing monorepo is treated as a new context in an existing landscape, not as a greenfield project; a similar
 service is used as evidence and as the cost anchor, never as a template.
+
+### Prototyping an open question
+
+When a UI, flow or state question cannot be settled on paper, `/feature --prototype` (or a proposal from the UX
+lens during grilling) runs a throwaway prototype before the stories are written. The `ux-designer` builds one
+self-contained HTML file under `docs/prototypes/<slug>/` – several structurally different UI variants or a
+clickable state model. The verdict goes into the story and, when it is a recurring rule, into the UX guidelines;
+the prototype is captured on a throwaway branch and never merged. `/implement --prototype` does the same for an
+open UI question during engineering; if the prototype changes the story, the story goes back to `review`.
+
+```bash
+/feature "checkout with saved cards" --prototype=ui
+/feature PROJ-123 --prototype=logic
+/implement ST-042 --prototype
+```
 
 ## Greenfield, end to end
 
@@ -329,9 +346,9 @@ Kataster stands on other people's work:
 
 - **Matt Pocock** – [skills](https://github.com/mattpocock/skills), [aihero.dev](https://www.aihero.dev). The grilling
   interview (`grilling`, `grill-me`, `grill-with-docs`), test-driven development (`tdd`), the deep-module vocabulary
-  (`codebase-design`), the architecture survey (`improve-codebase-architecture`), the retro, the domain-modeling
-  discipline and `writing-for-agents` come from his skill repository – partly adapted, partly copied verbatim under
-  MIT. The per-file mapping and the license text are in
+  (`codebase-design`), the architecture survey (`improve-codebase-architecture`), the throwaway prototype
+  (`prototype`), the retro, the domain-modeling discipline and `writing-for-agents` come from his skill repository –
+  partly adapted, partly copied verbatim under MIT. The per-file mapping and the license text are in
   [.claude/THIRD_PARTY_NOTICES.md](.claude/THIRD_PARTY_NOTICES.md).
 - **John Ousterhout**, *A Philosophy of Software Design* – "Design It Twice" and the depth, seam and deletion-test
   vocabulary.
