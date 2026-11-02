@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 – 2026-11-02
 
 - **Optional prototyping, owned by the UX designer.** New `prototype` skill (adapted from Matt Pocock's, MIT) builds
   a throwaway self-contained HTML prototype for one design question: several structurally different UI variants
