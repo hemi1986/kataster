@@ -1,15 +1,15 @@
 ---
 name: implement
-description: Engineering workflow – implements one story from docs/stories/ test-first on its own branch, verifies, has it reviewed by code-reviewer and acceptance-tester, refactors, and sets it `done` on the acceptance tester's verdict and hands the pull request to the user to merge.
+description: Engineering workflow – implements one story from docs/stories/ test-first on its own branch, verifies, has it reviewed by code-reviewer and acceptance-tester, refactors, and sets it `done` on the acceptance tester's verdict and hands the pull request to the user to merge; `--prototype` settles an open UI question first.
 disable-model-invocation: true
-argument-hint: "[ST-NNN – empty = next ready story]"
+argument-hint: "[ST-NNN – empty = next ready story] [--prototype[=ui|logic]]"
 ---
 
 # Implement a Story
 
-Story: the arguments from the invocation (empty → `node .claude/skills/implement/scripts/next-story.ts`; a story already `in-progress` is finished first).
+Story: the arguments from the invocation (empty → `node .claude/skills/implement/scripts/next-story.ts`; a story already `in-progress` is finished first). `--prototype[=ui|logic]` is a flag, not the story ID: strip it before resolving the story. It asks for a prototype before the test plan; see *Prototype (only when asked)*.
 
-The main session writes the code; subagents only review. One checkpoint belongs to the user: the **merge** (step 7). Everything before it runs without asking – a `ready` story is good enough to build up to the pull request, and the acceptance tester accepts the story, not the user – unless the story turns out to be wrong (see *When the story is wrong*) or a seam is missing from the catalog (step 2).
+The main session writes the code; subagents only review. One checkpoint belongs to the user: the **merge** (step 7). Everything before it runs without asking – a `ready` story is good enough to build up to the pull request, and the acceptance tester accepts the story, not the user – unless the story turns out to be wrong (see *When the story is wrong*), a seam is missing from the catalog (step 2), or the user asked for a prototype (step 1b – the verdict is theirs).
 
 Engineering conventions: `docs/engineering/conventions.md` – read it if it exists; it describes the module layout, how commands and read models are built, and the **seam catalog**.
 
@@ -21,6 +21,25 @@ Project profile: `.claude/project.json` – default branch, code roots, commands
    `external` key – an unlinked story never reaches `ready`, so stop and report instead of implementing a stale mirror.
 3. `node .claude/skills/implement/scripts/story-context.ts ST-NNN` – the context pack: story, exact test titles, dependencies, events/commands/rules/invariants, glossary, data model, ADRs. Read it completely; it is your source, not memory.
 4. `git switch -c st-NNN-<slug>` (slug from the file name), then `node .claude/skills/implement/scripts/story-status.ts ST-NNN in-progress` and commit `ST-NNN: start`.
+
+## 1b. Prototype (only when asked)
+
+Only with `--prototype`, or when the user explicitly asks during the story. A `ui` story whose screen shape is
+still open was not `ready`; this is the exception that settles it before the test plan. Load the `prototype`
+skill and follow it.
+
+1. **Standalone first.** Delegate to `ux-designer`: question, branch (`ui` or `logic`), variants/scenarios,
+   timebox, target `docs/prototypes/<slug>/`. It writes the self-contained HTML file. The user decides.
+2. **In-app only when the question needs the real page** – an existing route, real data, the real header and
+   sidebar. You build the throwaway route or the `?variant=` gate yourself, following the project's routing
+   convention; the `ux-designer` defines the question and variants and reviews the result. The prototype stays
+   out of the production path and is captured on `prototype/<slug>`.
+3. **Capture.** Commit `docs/prototypes/<slug>/` (or the in-app prototype) on `prototype/<slug>`, return to the
+   story branch, and pass the verdict to `requirements-engineer`: `Prototype: prototype/<slug> – <question> –
+   <verdict>` in `## Context`; a recurring rule goes to `ux-designer` for `docs/product/ux-guidelines.md`.
+4. **Then decide.** If the prototype only settles layout and the scenarios still hold, continue with step 2.
+   If it changes behaviour or a scenario, the story goes back to `review` (see *When the story is wrong*),
+   `requirements-engineer` revises it and `/review-stories` approves it again. The branch stays.
 
 ## 2. Test plan
 Call the `skill` tool for `tdd` (and `codebase-design` when a new module or interface is involved).
@@ -102,6 +121,8 @@ Summarize in a few lines: scenarios implemented, review findings fixed/skipped, 
 
 ## Spikes
 A spike answers its **Question** within its **Timebox** – no test plan, no TDD for throwaway experiments.
+- A UX or state-model spike is a prototype: load the `prototype` skill, keep the question and timebox in the
+  story, and capture the verdict the same way (step 1b).
 - Before starting, tell the user the timebox and what will be kept (skeleton code that becomes the application gets tests and passes verify).
 - Tick each checklist item in the story file as it is answered; write results where the item says (an ADR's consequences, `OPEN_QUESTIONS.md`). A new decision → ADR with `status: proposed` (architect skill); the user accepts.
 - Timebox exhausted → stop, document what is known, and ask the user how to continue.

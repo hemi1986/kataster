@@ -11,9 +11,10 @@ Everything not listed here is original to Kataster.
 - Site: <https://www.aihero.dev/skills>
 - License: MIT, Copyright (c) 2026 Matt Pocock (full text below)
 
-The grilling interview, the deep-module vocabulary, the test-first loop, the architecture survey and the
-`writing-for-agents` reference are his. Some files are copied verbatim, others are adapted to Kataster's artifacts
-(`CONTEXT.md` instead of `GLOSSARY.md`, the `skill` tool name in OpenCode, the seam catalog, the review agents):
+The grilling interview, the deep-module vocabulary, the test-first loop, the architecture survey, the throwaway
+prototype and the `writing-for-agents` reference are his. Some files are copied verbatim, others are adapted to
+Kataster's artifacts (`CONTEXT.md` instead of `GLOSSARY.md`, the `skill` tool name in OpenCode, the seam catalog,
+the review agents):
 
 | In Kataster | Upstream | State |
 |---|---|---|
@@ -29,6 +30,9 @@ The grilling interview, the deep-module vocabulary, the test-first loop, the arc
 | `.claude/skills/improve-codebase-architecture/SKILL.md` | `skills/engineering/improve-codebase-architecture/SKILL.md` | adapted (glossary, tool name) |
 | `.claude/skills/retro/SKILL.md` | `skills/engineering/retro/SKILL.md` | adapted |
 | `.claude/skills/domain-model/SKILL.md` | `skills/engineering/domain-modeling/SKILL.md` | adapted (contexts, aggregates, data model) |
+| `.claude/skills/prototype/SKILL.md` | `skills/engineering/prototype/SKILL.md` | adapted (standalone HTML in discovery, story/guideline capture, timebox) |
+| `.claude/skills/prototype/UI.md` | `skills/engineering/prototype/UI.md` | adapted (standalone default, in-app exception, Kataster artifacts) |
+| `.claude/skills/prototype/LOGIC.md` | `skills/engineering/prototype/LOGIC.md` | adapted (Kataster artifacts) |
 
 Agents and commands built on top of them (`/implement`, `/feature`, `/review-stories`, `/groom-backlog`,
 `/shape`, the review agents in `.claude/agents/`) are Kataster's own, but they stand on the same ideas: grilling as

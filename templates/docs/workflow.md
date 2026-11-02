@@ -17,6 +17,7 @@ is what to read when you are unsure where something belongs.
 | Vision, user groups, scope | `docs/product/vision.md` | user + `product-owner` |
 | Initiative briefs (proposals, no stories) | `docs/product/initiatives/<slug>.md` | `/shape`; user accepts |
 | UI/UX decisions (yardstick) | `docs/product/ux-guidelines.md` | `ux-designer` (user approves) |
+| Prototypes (throwaway, on branch `prototype/<slug>`) | `docs/prototypes/<slug>/` | `ux-designer`; verdict in the story and `ux-guidelines.md` |
 | Glossary (ubiquitous language) | `CONTEXT.md` | `domain-model` skill |
 | Event storming model | `docs/domain/events.yaml` | event storming / `domain-architect` |
 | Visualization (generated!) | `docs/domain/event-storming.md` | hook – never edit manually |
@@ -49,12 +50,13 @@ is what to read when you are unsure where something belongs.
 | `affected.ts` | monorepo fast loop: changed files or `--base` → affected packages + native test command |
 | `grilling` (`/grill-me`) | relentless interview in rounds with recommended answers – how we ask questions |
 | `/grill-with-docs` | grilling + `domain-model` + `architect`: writes glossary and ADRs as it goes |
-| `/event-storming [process]`, `/feature <idea \| ST-NNN \| ticket>` | discovery entry points; both start by grilling. `/feature` resolves a story or ticket read-only and routes bugs to a regression story |
+| `/event-storming [process]`, `/feature <idea \| ST-NNN \| ticket>` | discovery entry points; both start by grilling. `/feature` resolves a story or ticket read-only and routes bugs to a regression story; `--prototype` adds a throwaway prototype before the stories |
 | `user-stories`, `/review-stories` | story format, validation, review |
 | `backlog`, `/backlog-sync` | local / GitHub Issues / Jira mirror, sync and conflict rules |
 | `ux-design` | how we decide the interface: the UX frontier, what a story says about a screen, review order |
+| `prototype` | throwaway HTML prototype for a UI or logic question; the verdict goes into the story and the guidelines |
 | `/groom-backlog` | periodic challenge of the open backlog |
-| `/implement [ST-NNN]` | one story test-first, verify, review, refactor, acceptance, pull request |
+| `/implement [ST-NNN]` | one story test-first, verify, review, refactor, acceptance, pull request; `--prototype` prototypes an open UI question first |
 | `tdd` | red → green loop, good tests, seams |
 | `codebase-design` | vocabulary for deep modules |
 | `/improve-codebase-architecture` | periodic scan for deepening opportunities, then grilling |
@@ -100,6 +102,10 @@ is what to read when you are unsure where something belongs.
   source is recorded in the story (`Source: …`), its acceptance criteria are grilled like any other claim, and
   `external` is still written only by the backlog sync. A bug is a story with the label `bug`, not a separate type; a
   change to a documented rule is a feature, because the rule changes.
+- **Prototypes are throwaway.** One question, one self-contained HTML file under `docs/prototypes/<slug>/`,
+  captured on a throwaway branch `prototype/<slug>` and never merged. The decision lands in the story
+  (`Prototype: …`) and, when it is a recurring rule, in `ux-guidelines.md` as a G-number. No tests, no
+  persistence, no production code.
 - **Initiatives are not a backlog.** `docs/product/initiatives/` holds proposals from `/shape`; they have no
   `ready`/`done` and create no stories. Only `docs/stories/` is work. Cost is a range with a basis and a
   confidence – never a single number, never a commitment.
@@ -110,11 +116,14 @@ is what to read when you are unsure where something belongs.
 Discovery, first time: `/bootstrap` (greenfield) or `/adopt` (existing code), then `/review-stories` until stories
 are `ready`. A monorepo is adopted slice by slice: finish one domain plus its shared library, then run
 `/adopt <next path>` – the map keeps track of what is adopted. Later features: `/feature <idea | ticket>`; an idea
-larger than one feature goes through `/shape` first and then `/feature` per slice.
+larger than one feature goes through `/shape` first and then `/feature` per slice. When a UI, flow or state
+question cannot be settled on paper, `/feature --prototype` adds a throwaway prototype between grilling and the
+stories; the verdict goes into the story and the UX guidelines.
 
 Engineering, story by story: `/implement [ST-NNN]` (empty = next ready story whose dependencies are done):
 prepare → test plan → red/green per scenario → `verify.ts` → review lane scaled to risk → refactor → acceptance
-tester's verdict → `done` + pull request; **the user only merges**. Start the next story in a fresh session.
+tester's verdict → `done` + pull request; **the user only merges**. `--prototype` settles an open UI question
+first; if it changes the story, the story goes back to `review`. Start the next story in a fresh session.
 
 With a tracker: pull before `/review-stories`, `/groom-backlog` and `/implement`; push after changing or approving
 stories and after `done`. The tracker leads on conflict; `docs/stories/` is the mirror and `BACKLOG.md` stays

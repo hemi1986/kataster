@@ -46,6 +46,9 @@ test("installs the workflow into an existing repository", () => {
     ".claude/skills/implement/scripts/verify.ts",
     ".claude/skills/feature/scripts/intake.ts",
     ".claude/skills/shape/SKILL.md",
+    ".claude/skills/prototype/SKILL.md",
+    ".claude/skills/prototype/UI.md",
+    ".claude/skills/prototype/LOGIC.md",
     ".claude/skills/backlog/scripts/backlog-push.ts",
     ".claude/skills/backlog/scripts/jira-plan.ts",
     ".claude/lib/config.ts",
@@ -66,6 +69,7 @@ test("installs the workflow into an existing repository", () => {
     "docs/domain/events.yaml",
     "docs/product/vision.md",
     "docs/product/initiatives/README.md",
+    "docs/prototypes/README.md",
     "docs/engineering/conventions.md",
     "docs/stories/README.md",
   ]) {
@@ -307,4 +311,5 @@ test("installs the third-party notices with the payload", () => {
   const notices = read(dir, ".claude/THIRD_PARTY_NOTICES.md");
   assert.match(notices, /Matt Pocock/);
   assert.match(notices, /MIT License/);
+  assert.match(notices, /skills\/prototype\/SKILL\.md/);
 });

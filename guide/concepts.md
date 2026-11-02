@@ -29,6 +29,7 @@ Two rules make it work:
 | `docs/stories/` | The backlog. One Markdown file per story; `BACKLOG.md` is generated. With a tracker, this is the local mirror | requirements-engineer, PO, lead-dev; `/backlog-sync` with a tracker |
 | `docs/product/vision.md` | Problem, user groups, goals, non-goals, success criteria | user |
 | `docs/product/ux-guidelines.md` | The interface yardstick, as numbered rules with date and reason | ux-designer, approved by user |
+| `docs/prototypes/<slug>/` | Throwaway prototypes on their own branch; only the README stays on the default branch | ux-designer; verdict in the story and the guidelines |
 
 ## Events, commands, aggregates
 
@@ -74,6 +75,20 @@ or no-go.
 An initiative is **not** a work item: no `ready`/`done`, no stories, no second backlog. The cost is always a range
 with a basis and a confidence – an analogue service is evidence, not a template. Each accepted slice then goes
 through `/feature`, which creates the stories and runs the review.
+
+## Prototypes
+
+A **prototype** is throwaway code that answers one design question. It is not a first draft: no tests, no
+persistence, no production path. The question decides the branch – `ui` (what should it look like) or `logic`
+(does the state model feel right). In discovery it is one self-contained HTML file under
+`docs/prototypes/<slug>/`, built by the `ux-designer`; a question that needs the real application page is built
+by the main session during `/implement`.
+
+`/feature --prototype` (or a proposal from the UX frontier during grilling) adds the phase between grilling and
+the stories. The verdict goes into the story (`Prototype: prototype/<slug> – <question> – <verdict>`) and, when
+it is a recurring rule, into `ux-guidelines.md` as a G-number. The code is captured on a throwaway branch
+`prototype/<slug>` and never merged. `/implement --prototype` does the same for an open UI question during
+engineering; if it changes the story, the story goes back to `review`.
 
 ## The seam catalog
 

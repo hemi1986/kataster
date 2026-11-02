@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Optional prototyping, owned by the UX designer.** New `prototype` skill (adapted from Matt Pocock's, MIT) builds
+  a throwaway self-contained HTML prototype for one design question: several structurally different UI variants
+  (`ui`) or a clickable state model (`logic`). `/feature --prototype[=ui|logic]` – or a proposal from the UX frontier
+  during grilling – runs it between grilling and the stories; `/implement --prototype` settles an open UI question
+  before the test plan. The verdict goes into the story (`Prototype: …`) and, when it is a recurring rule, into
+  `docs/product/ux-guidelines.md` as a G-number. The prototype lives under `docs/prototypes/<slug>/`, is captured on
+  a throwaway branch `prototype/<slug>` and is never merged.
 - **Credit where the workflow comes from.** `.claude/THIRD_PARTY_NOTICES.md` lists which skills are derived from
   [Matt Pocock's skills](https://github.com/mattpocock/skills) – some adapted, some copied verbatim – and carries his
   MIT license text. The file ships with the payload and lands in every installation; the README has a Credits
