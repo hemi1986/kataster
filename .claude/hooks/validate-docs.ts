@@ -2,7 +2,8 @@
  * PostToolUse hook: validates discovery artifacts right after every write.
  *
  * - docs/domain/events.yaml → schema + references; on success event-storming.md and BACKLOG.md are re-rendered
- * - docs/stories/*.md       → validation of the changed story (lenient on dependencies) and of its status change
+ * - docs/stories/*.md       → the same deterministic rules as `skills/user-stories/scripts/lint-story.ts`
+ *                             (frontmatter, aggregate/command/events, Gherkin, scenario limit) and the status change
  *                             since the last commit (engineering workflow); on success BACKLOG.md is re-rendered
  * Exit 2 + stderr = Claude gets the errors back and has to fix them.
  */

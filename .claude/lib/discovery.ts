@@ -44,11 +44,32 @@ const KIND_LABEL: Record<string, string> = {
  * `superseded`: never built as written – its work was done elsewhere (a direct change, another story) or a new planning
  * replaces it. The file stays as the record other documents link to; it is final and counts toward no progress (user,
  * 2026-10-25).
+ *
+ * `ready-for-human-review` is set by the linter gate: a story whose spec passes every mechanical check waits there
+ * until the user approves it as `ready`. Engineering only picks up `ready` stories.
  */
-export const STATUSES = ["draft", "review", "ready", "in-progress", "done", "superseded"] as const;
-/** Statuses that require a finished story: size set, no [OPEN] markers. */
-export const COMMITTED = new Set(["ready", "in-progress", "done"]);
-export const MAX_SCENARIOS = 10;
+export const STATUSES = ["draft", "review", "ready-for-human-review", "ready", "in-progress", "done", "superseded"] as const;
+/** Statuses that require a finished story: no [OPEN] markers and a consistent spec. */
+export const COMMITTED = new Set(["ready-for-human-review", "ready", "in-progress", "done"]);
+/** Statuses handed to engineering or the tracker: the tracker link is required from `ready` on, not before. */
+const HANDOFF = new Set(["ready", "in-progress", "done"]);
+/**
+ * 1 command + 1 aggregate, at most 4 scenarios: one happy path and up to three edge/error cases. Each scenario is a
+ * red → green cycle in /implement; more than four means the story merges commands or restates UX guidelines.
+ */
+export const MAX_SCENARIOS = 4;
+/**
+ * Story types.
+ *
+ *   domain     – full DDD/TDD path: exactly one command on one aggregate, Gherkin traceability, reviews
+ *   chore/task – fast lane: UI tweaks, refactorings, dependencies, setup; no Gherkin matching, no formal reviews
+ *   tech-task  – deliberate technical groundwork with a checklist
+ *   spike      – a timeboxed question
+ *   story      – the legacy name of `domain`; still valid, reported as a warning
+ */
+export const DOMAIN_TYPES = new Set(["domain", "story"]);
+export const FAST_TYPES = new Set(["chore", "task"]);
+export const LEGACY_TYPES: Record<string, string> = { story: "domain" };
 const PRIORITIES = ["must", "should", "could", "wont"];
 
 // --------------------------------------------------------------------------
@@ -81,6 +102,13 @@ export class Report {
 const list = (v: unknown): string[] => (Array.isArray(v) ? v : []);
 const items = (model: Obj, key: string): Obj[] => list(model[key]) as unknown as Obj[];
 const prefix = (id: string): string => id.split("-", 1)[0];
+
+/** Domain story: full DDD/TDD path. `story` is the legacy name of `domain`. */
+export const isDomain = (meta: Obj): boolean => DOMAIN_TYPES.has(String(meta.type));
+/** Fast lane: chore or task – no Gherkin matching, no formal subagent reviews. */
+export const isFastLane = (meta: Obj): boolean => FAST_TYPES.has(String(meta.type));
+/** A story with a frontend part: the explicit `ui: true` flag, or the legacy `ui` label. */
+export const isUi = (meta: Obj): boolean => meta.ui === true || list(meta.labels).includes("ui");
 
 /** Resolves symlinks where possible so paths from hooks and from ROOT compare equal. */
 export function realPath(p: string): string {
@@ -489,8 +517,8 @@ export const SCENARIO_RE = /^\s*(?:Scenario Outline|Scenario Template|Scenario|E
 
 function checkBody(r: Report, where: string, meta: Obj, body: string): void {
   const secs = sections(body);
-  const type = meta.type;
-  if (type === "story") {
+  const type = String(meta.type);
+  if (isDomain(meta)) {
     const s = section(secs, "story");
     if (s === null) {
       r.error(where, "section '## Story' is missing");
@@ -499,7 +527,9 @@ function checkBody(r: Report, where: string, meta: Obj, body: string): void {
     }
   }
   if (type === "spike" && section(secs, "question") === null) r.error(where, "spike needs a '## Question' section");
-  if (type === "tech-task" && section(secs, "task") === null) r.error(where, "tech task needs a '## Task' section");
+  if (type === "tech-task" || type === "task" || type === "chore") {
+    if (section(secs, "task") === null) r.error(where, `${type} needs a '## Task' section`);
+  }
 
   const ac = section(secs, "acceptance criteria");
   if (ac === null) {
@@ -511,12 +541,11 @@ function checkBody(r: Report, where: string, meta: Obj, body: string): void {
   const titles = scenarios.map((sc) => sc.split("\n")[0].trim().toLowerCase());
   const dupes = titles.filter((t, n) => t && titles.indexOf(t) !== n);
   if (dupes.length) r.error(where, `scenario titles must be unique within the story: ${[...new Set(dupes)].join(", ")}`);
-  if (type === "story") {
+  if (isDomain(meta)) {
     if (scenarios.length < 2) r.error(where, "at least 2 Gherkin scenarios required (happy path + error/edge case)");
     scenarios.forEach((sc, n) => {
-      if (!/^\s*When\b/m.test(sc) || !/^\s*Then\b/m.test(sc)) {
-        r.error(where, `scenario ${n + 1}: 'When' and 'Then' are required`);
-      }
+      const missing = ["Given", "When", "Then"].filter((step) => !new RegExp(`^\\s*${step}\\b`, "m").test(sc));
+      if (missing.length) r.error(where, `scenario ${n + 1}: ${missing.join(", ")} required (Gherkin Given/When/Then)`);
     });
   } else if (!scenarios.length && !/^\s*[-*]\s*\[[ xX]\]/m.test(ac)) {
     r.error(where, "give acceptance criteria as scenarios or a checklist ('- [ ] …')");
@@ -554,8 +583,8 @@ export function scenarioTitlesIn(body: string): string[] {
  * and stays the authority.
  */
 export function completenessWarnings(story: Story): string[] {
-  if (story.meta.type !== "story") return []; // spikes and tech tasks carry checklists, not screens
-  if (!list(story.meta.labels).includes("ui")) return [];
+  if (!isDomain(story.meta)) return []; // fast lane, spikes and tech tasks carry checklists, not screens
+  if (!isUi(story.meta)) return [];
   const ac = section(sections(story.body), "acceptance criteria") ?? "";
   if (!ac.trim()) return [];
   const titles = scenarioTitlesIn(story.body);
@@ -638,23 +667,89 @@ export function validateStories(report: Report, only: string | null = null, leni
         else r.error(where, msg);
       }
     }
-    const status = m.status;
-    if (COMMITTED.has(status) && !m.size) r.error(where, `size is missing – lead-dev must estimate before '${status}'`);
-    if (m.size === "XL") {
-      const msg = "size XL – split the story";
-      if (COMMITTED.has(status)) r.error(where, msg);
-      else r.warn(where, msg);
+    const status = String(m.status);
+    const type = String(m.type);
+    // The strict 1-command rules apply to the new `domain` type. `story` is the legacy name and stays valid
+    // (warnings only), so an upgrade does not turn an existing backlog red.
+    const strict = type === "domain";
+    if (LEGACY_TYPES[type]) {
+      r.warn(where, `type '${type}' is the legacy name of '${LEGACY_TYPES[type]}' – use '${LEGACY_TYPES[type]}'`);
     }
-    // Every scenario is a red → green cycle in /implement; past ten the story is too big or restates UX
-    // guideline patterns (user, 2026-10-26). `ready` ones were approved under the older rules.
+    if (!isDomain(m) && !isFastLane(m) && type !== "spike" && type !== "tech-task") {
+      r.error(where, `unknown type '${type}' (domain, chore, task, tech-task, spike)`);
+    }
+    if (strict) {
+      if (!m.context) r.error(where, "domain story needs a bounded context ('context: BC-…')");
+      if (!m.aggregate) r.error(where, "domain story needs exactly one aggregate ('aggregate: AGG-…')");
+      if (!m.command) r.error(where, "domain story needs exactly one command ('command: CMD-…')");
+    }
+    if (isDomain(m) && !strict) {
+      if (!m.aggregate || !m.command) {
+        r.warn(where, "legacy story without aggregate/command – the 1-command rule cannot be checked; migrate it to type: domain");
+      }
+    }
+    if (idx !== null) {
+      const ctx = m.context;
+      if (typeof ctx === "string" && ctx && (!idx.has(ctx) || prefix(ctx) !== "BC")) {
+        r.error(where, `context '${ctx}' does not exist in events.yaml`);
+      }
+      for (const ev of list(m.events)) {
+        if (!idx.has(ev) || prefix(ev) !== "EVT") r.error(where, `event '${ev}' does not exist in events.yaml`);
+      }
+      if (m.aggregate !== undefined) {
+        if (typeof m.aggregate !== "string" || !idx.has(m.aggregate) || prefix(m.aggregate) !== "AGG") {
+          r.error(where, `aggregate '${fmt(m.aggregate)}' does not exist in events.yaml`);
+        }
+      }
+      if (m.command !== undefined) {
+        if (typeof m.command !== "string" || !idx.has(m.command) || prefix(m.command) !== "CMD") {
+          r.error(where, `command '${fmt(m.command)}' does not exist in events.yaml`);
+        }
+      }
+      // The 1-command rule: one story = one command + its events on one aggregate.
+      const cmd = typeof m.command === "string" ? idx.get(m.command) : undefined;
+      if (cmd && typeof m.aggregate === "string" && cmd.aggregate && cmd.aggregate !== m.aggregate) {
+        r.error(where, `command '${m.command}' belongs to aggregate '${cmd.aggregate}', not '${m.aggregate}'`);
+      }
+      if (strict && cmd) {
+        const produced = list(cmd.produces);
+        const linked = list(m.events);
+        if (!produced.length) {
+          r.error(where, `command '${m.command}' produces no event in events.yaml`);
+        } else {
+          const missing = produced.filter((ev) => !linked.includes(ev));
+          const extra = linked.filter((ev) => !produced.includes(ev));
+          if (missing.length || extra.length) {
+            r.error(
+              where,
+              `events must be exactly what command '${m.command}' produces (${produced.join(", ")})` +
+                (missing.length ? ` – missing: ${missing.join(", ")}` : "") +
+                (extra.length ? ` – not produced: ${extra.join(", ")}` : ""),
+            );
+          }
+        }
+      }
+    } else if (isDomain(m)) {
+      // Without a readable model the required fields are checked above; the cross-check cannot run.
+      r.warn(where, "events.yaml is missing or invalid – the aggregate/command cross-check was skipped");
+    }
+    for (const dep of list(m.depends_on)) {
+      if (dep === id) {
+        r.error(where, "depends on itself");
+      } else if (!stories.has(dep)) {
+        const msg = `depends_on '${dep}' does not exist`;
+        if (lenientDeps) r.warn(where, msg);
+        else r.error(where, msg);
+      }
+    }
+    if (m.size === "XL") r.warn(where, "size XL – split the story");
+    // Every scenario is a red → green cycle in /implement; past four the story merges commands or restates UX
+    // guideline patterns. Domain stories must obey it; legacy `story` files get a warning until migrated.
     const scenarioTotal = scenarioTitlesIn(s.body).length;
-    if (m.type === "story" && scenarioTotal > MAX_SCENARIOS && (status === "draft" || status === "review")) {
-      const msg = `${scenarioTotal} scenarios, at most ${MAX_SCENARIOS} – split the story, or reference the UX guideline (G-number) instead of restating its pattern as scenarios`;
-      if (status === "review") r.error(where, msg);
+    if (isDomain(m) && scenarioTotal > MAX_SCENARIOS && (status === "draft" || status === "review" || status === "ready-for-human-review")) {
+      const msg = `${scenarioTotal} scenarios, at most ${MAX_SCENARIOS} – split the story (one command, one aggregate), or reference the UX guideline (G-number) instead of restating its pattern as scenarios`;
+      if (strict && status !== "draft") r.error(where, msg);
       else r.warn(where, msg);
-    }
-    if (m.type === "story" && COMMITTED.has(status) && !list(m.events).length) {
-      r.warn(where, "no domain events linked – traceability is missing");
     }
 
     // In tracker mode the Markdown file is a mirror. A story that is handed to engineering must carry its
@@ -668,7 +763,7 @@ export function validateStories(report: Report, only: string | null = null, leni
           r.error(where, "external.key is missing");
         }
       }
-      if (COMMITTED.has(status) && !(ext && typeof ext === "object" && typeof ext.key === "string" && ext.key)) {
+      if (HANDOFF.has(status) && !(ext && typeof ext === "object" && typeof ext.key === "string" && ext.key)) {
         r.error(where, `not linked to the ${backlog.provider} backlog – run /backlog-sync push before '${status}'`);
       }
       const prefix = labelPrefix(backlog);
@@ -680,7 +775,9 @@ export function validateStories(report: Report, only: string | null = null, leni
     checkBody(r, where, m, s.body);
     // Completeness is checked while a story is being written; `ready` ones were approved under the older rules
     // and are challenged in `/groom-backlog` instead (user, 2026-10-01).
-    if (status === "draft" || status === "review") for (const w of completenessWarnings(s)) r.warn(where, w);
+    if (status === "draft" || status === "review" || status === "ready-for-human-review") {
+      for (const w of completenessWarnings(s)) r.warn(where, w);
+    }
   }
 
   // Cycles in depends_on
@@ -710,6 +807,7 @@ export function validateStories(report: Report, only: string | null = null, leni
 const STATUS_TITLES: [string, string][] = [
   ["in-progress", "In Progress"],
   ["ready", "Ready"],
+  ["ready-for-human-review", "Ready for Human Review"],
   ["review", "In Review"],
   ["draft", "Draft"],
   ["done", "Done"],
@@ -763,14 +861,14 @@ export function renderBacklog(stories: Story[], model: Obj | null): string {
     );
   }
   if (!stories.length) {
-    out.push("_No stories yet. Derive them from the event storming with `@requirements-engineer`._", "");
+    out.push("_No stories yet. Derive them from the event storming as a spec engineer (main session)._", "");
     return out.join("\n");
   }
 
   const counts = STATUS_TITLES.map(([st, title]) => [title, stories.filter((s) => s.meta.status === st).length] as const);
   // Progress is measured in domain stories and their scenarios, not in the total number of stories (CLAUDE.md).
   // A superseded story was never built as one – its work counts where it was done.
-  const domain = stories.filter((s) => s.meta.type === "story" && s.meta.status !== "superseded");
+  const domain = stories.filter((s) => isDomain(s.meta) && s.meta.status !== "superseded");
   const scenarioCount = (s: Story) =>
     (section(sections(s.body), "acceptance criteria") ?? "")
       .split("\n")

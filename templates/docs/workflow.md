@@ -14,7 +14,7 @@ is what to read when you are unsure where something belongs.
 
 | Artifact | File | Owner |
 |---|---|---|
-| Vision, user groups, scope | `docs/product/vision.md` | user + `product-owner` |
+| Vision, user groups, scope | `docs/product/vision.md` | user + main session |
 | Initiative briefs (proposals, no stories) | `docs/product/initiatives/<slug>.md` | `/shape`; user accepts |
 | UI/UX decisions (yardstick) | `docs/product/ux-guidelines.md` | `ux-designer` (user approves) |
 | Prototypes (throwaway, on branch `prototype/<slug>`) | `docs/prototypes/<slug>/` | `ux-designer`; verdict in the story and `ux-guidelines.md` |
@@ -30,12 +30,12 @@ is what to read when you are unsure where something belongs.
 | Existing boundary debt (generated) | `docs/architecture/boundaries.baseline.json` | `boundary-check.ts --update-baseline` |
 | Project checks (what runs when) | `docs/engineering/checks.yaml` | `/adopt`, user approves |
 | Architecture decisions (ADRs) | `docs/adr/` | `architect` skill / `domain-architect` (user accepts) |
-| Stories | `docs/stories/ST-NNN-*.md` | `requirements-engineer`; status by `/implement`; with a tracker this is the mirror |
+| Stories | `docs/stories/ST-NNN-*.md` | main session as spec engineer; linter gate; status by `/implement`; with a tracker this is the mirror |
 | Backlog backend | `.claude/project.json` → `backlog.provider` – `local`, `github` or `jira` | user |
 | Backlog mirror (with a tracker) | `docs/stories/` | `/backlog-sync` |
 | Backlog (generated!) | `docs/stories/BACKLOG.md` | hook – never edit manually |
 | Open questions | `docs/stories/OPEN_QUESTIONS.md` | everyone |
-| Reviews | `docs/reviews/` | `review-stories`, `acceptance-tester`, `code-reviewer` |
+| Reviews | `docs/reviews/` | spec linter and `acceptance-tester`/`code-reviewer` (domain lane only; findings, no stories) |
 | Engineering conventions, seam catalog | `docs/engineering/conventions.md` | written after the foundation, user approves |
 | Application code and tests | `repo.codeRoots` in `.claude/project.json` | `/implement` |
 
@@ -51,12 +51,12 @@ is what to read when you are unsure where something belongs.
 | `grilling` (`/grill-me`) | relentless interview in rounds with recommended answers – how we ask questions |
 | `/grill-with-docs` | grilling + `domain-model` + `architect`: writes glossary and ADRs as it goes |
 | `/event-storming [process]`, `/feature <idea \| ST-NNN \| ticket>` | discovery entry points; both start by grilling. `/feature` resolves a story or ticket read-only and routes bugs to a regression story; `--prototype` adds a throwaway prototype before the stories |
-| `user-stories`, `/review-stories` | story format, validation, review |
+| `user-stories`, `/review-stories` | story format, 1-command rule, spec linter, human approval |
 | `backlog`, `/backlog-sync` | local / GitHub Issues / Jira mirror, sync and conflict rules |
 | `ux-design` | how we decide the interface: the UX frontier, what a story says about a screen, review order |
 | `prototype` | throwaway HTML prototype for a UI or logic question; the verdict goes into the story and the guidelines |
 | `/groom-backlog` | periodic challenge of the open backlog |
-| `/implement [ST-NNN]` | one story test-first, verify, review, refactor, acceptance, pull request; `--prototype` prototypes an open UI question first |
+| `/implement [ST-NNN] [--fast]` | one story on its branch: domain = test-first, diff-scaled review, acceptance; chore/task or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first |
 | `tdd` | red → green loop, good tests, seams |
 | `codebase-design` | vocabulary for deep modules |
 | `/improve-codebase-architecture` | periodic scan for deepening opportunities, then grilling |
@@ -79,8 +79,22 @@ is what to read when you are unsure where something belongs.
   `backlog.provider` = `jira` or `github` in `.claude/project.json`, the tracker is the source of truth and
   `docs/stories/` is its local mirror; sync through `/backlog-sync` and never edit `BACKLOG.md` by hand. Reviews and
   open questions stay local. `ST-NNN` stays the stable id; the tracker key lives in `external`.
-- **Traceability in the code**: every Gherkin scenario has a test titled exactly `ST-NNN: <scenario title>`;
-  commands, events, read models and policies carry their ID from `events.yaml`. `verify.ts` checks both.
+- **1-command rule.** One story = one command + its events on one aggregate, at most 4 Gherkin scenarios. A second
+  command is a second story, never a second scenario set. `type: domain` requires `aggregate` and `command` and the
+  linter cross-checks them against `events.yaml`.
+- **Fast lane.** `type: chore` and `type: task` cover UI tweaks, refactorings, dependencies and setup. `/implement`
+  takes the fast lane automatically (or with `--fast`): branch → implement → lint/typecheck/tests → pull request, no
+  Gherkin matching and no formal review pass. `type: tech-task` keeps its checklist and acceptance; `type: spike` is
+  a timeboxed question.
+- **The spec linter is the gate.** `node .claude/skills/user-stories/scripts/lint-story.ts <file>` (or
+  `kataster lint-story`) checks frontmatter, required fields, aggregate/command/event references, Gherkin and the
+  scenario limit – deterministically, without an LLM. Green → `ready-for-human-review`; the user approves `ready`.
+- **Traceability in the code**: every Gherkin scenario of a `domain` story has a test titled exactly
+  `ST-NNN: <scenario title>`; commands, events, read models and policies carry their ID from `events.yaml`.
+  `verify.ts` checks both. Chore/task stories are covered by their checklist and unit tests.
+- **Reviews report, they do not plan.** `code-reviewer` and `acceptance-tester` find problems; they never create,
+  split or revise stories. A finding is fixed in the story or becomes an open question to the developer. Review
+  effort follows the diff (light lane for texts/layout, normal lane otherwise).
 - **Status changes** go through `node .claude/skills/implement/scripts/story-status.ts`. A `done` story is never
   reopened – changes become a new story.
 - **Never weaken or delete a test to get green.** One branch and one pull request per story; the user merges.
@@ -120,10 +134,12 @@ larger than one feature goes through `/shape` first and then `/feature` per slic
 question cannot be settled on paper, `/feature --prototype` adds a throwaway prototype between grilling and the
 stories; the verdict goes into the story and the UX guidelines.
 
-Engineering, story by story: `/implement [ST-NNN]` (empty = next ready story whose dependencies are done):
-prepare → test plan → red/green per scenario → `verify.ts` → review lane scaled to risk → refactor → acceptance
-tester's verdict → `done` + pull request; **the user only merges**. `--prototype` settles an open UI question
-first; if it changes the story, the story goes back to `review`. Start the next story in a fresh session.
+Engineering, story by story: `/implement [ST-NNN]` (empty = next ready story whose dependencies are done). Domain
+lane: prepare → test plan → red/green per scenario → `verify.ts` → review lane scaled to the diff → refactor →
+acceptance tester's verdict → `done` + pull request. Fast lane (`chore`/`task`, or `--fast`): prepare → implement →
+lint/typecheck/tests → `verify.ts` → pull request. **The user only merges.** `--prototype` settles an open UI
+question first; if it changes the story, the story goes back to `review`, through the linter and the user again.
+Start the next story in a fresh session.
 
 With a tracker: pull before `/review-stories`, `/groom-backlog` and `/implement`; push after changing or approving
 stories and after `done`. The tracker leads on conflict; `docs/stories/` is the mirror and `BACKLOG.md` stays

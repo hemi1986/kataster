@@ -77,24 +77,26 @@ and reason. Do not let it become a mood board.
 
 ## Phase 5 – Foundation stories and the first slice
 
-Delegate to `requirements-engineer` in two parts:
+Write the stories yourself as the spec engineer (the `user-stories` skill is the method), in two parts:
 
 1. **Foundation tech tasks** – what every later story relies on: repository skeleton, the single quality command
    (`verify`), CI, the test harness and test data approach, auth/roles if the vision needs them, deployment.
    Each is a tech task with a checklist and `depends_on`, not a domain story. Keep them minimal: foundation just
    in time, not a platform project.
 2. **The first vertical slice** – the smallest set of stories that delivers one real end-to-end path from the
-   vision (e.g. "report → triage → resolve"), each a story with Gherkin scenarios, `ui` where a person sees
+   vision (e.g. "report → triage → resolve"), each a story with Gherkin scenarios, `ui: true` where a person sees
    something.
 
-Rules: at most 10 scenarios per story; no implementation plan inside a domain story; every story links its
-`events`; `status: draft`, then `review` when finished.
+Rules: one story = one command + its events on one aggregate, at most 4 scenarios; no implementation plan inside a
+domain story; every domain story links `aggregate`, `command` and its `events`; `status: draft`, then `review` when
+finished. The spec linter must be green before `ready-for-human-review`.
+
 
 ## Phase 6 – Review
 
-Read `.claude/skills/review-stories/SKILL.md` and follow it with the story IDs from Phase 5. The user approves
-every `ready`. Fix what the review finds through `requirements-engineer` – never by editing a story into shape
-yourself when the change is structural.
+Read `.claude/skills/review-stories/SKILL.md` and follow it with the story IDs from Phase 5. The spec linter is the
+gate; the user approves every `ready`. Fix what it finds in the story (or in the model, when an event or aggregate
+is missing) – never work around a lint error.
 
 ## Phase 7 – Wrap-up
 

@@ -38,9 +38,10 @@ Everything else a person triggers has a screen, and if nobody designs it, it get
 act, and what they see afterwards? If any of the three is unclear, the feature has an open UX question – raise it
 in the grilling round, don't settle it while writing code.
 
-Stories with a frontend part carry the label **`ui`**. `/review-stories` (the lead-dev's UX lens) and
-`/groom-backlog` (the `ux-designer`) pick them by that label, so a missing label means a story nobody looks at from
-this side.
+Stories with a frontend part carry **`ui: true`** (the legacy label `ui` is still recognised). It is the trigger for
+the on-demand `ux-designer` – component/layout proposals, Figma/design-token logic, a prototype – and for the UI
+warnings in the spec linter. It is not a gate: a missing flag means a story nobody looks at from this side, not a
+story that cannot ship.
 
 ## The UX frontier – what to grill
 
@@ -90,13 +91,14 @@ story's `## Context` (`Prototype: prototype/<slug> – <question> – <verdict>`
 throwaway: it lives under `docs/prototypes/<slug>/`, is captured on a throwaway branch, and is never merged.
 Details: `.claude/skills/prototype/SKILL.md`.
 
-At story review, a `ui` story whose screen shape is still open is not `ready`: send it back to `/feature` for a
-prototype (or a spike), rather than approving it and deciding it in code.
+At story review, a `ui: true` story whose screen shape is still open is not `ready`: send it back to `/feature` for a
+prototype (or a spike), rather than approving it and deciding it in code. The `ux-designer` advises; the user
+approves.
 
 ## What goes into the story, and what does not
 
-Stories stay at the level of observable behaviour. The `lead-dev` rule holds for UX too: no implementation detail
-in a story, no markup, no component names, no pixel values.
+Stories stay at the level of observable behaviour. No implementation detail in a story: no markup, no pixel values.
+Component proposals belong to the `ux-designer` reply and the engineering conventions, not to the story.
 
 - **Into the Gherkin**: what a person sees and can do, in terms a test can check. "Then the open cases of the
   item are listed, newest first" – yes. "Then a card component with a muted description is rendered" – no.

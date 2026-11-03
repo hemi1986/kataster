@@ -26,7 +26,7 @@ Two rules make it work:
 | `docs/architecture/data-model.md` | Logical, stack-neutral model per aggregate; lifecycle and ER diagrams | domain-architect |
 | `docs/engineering/conventions.md` | How code is built here, including the seam catalog | user |
 | `docs/adr/` | Architecture decisions. `proposed` until the user accepts; accepted ones are superseded, never edited | user |
-| `docs/stories/` | The backlog. One Markdown file per story; `BACKLOG.md` is generated. With a tracker, this is the local mirror | requirements-engineer, PO, lead-dev; `/backlog-sync` with a tracker |
+| `docs/stories/` | The backlog. One Markdown file per story; `BACKLOG.md` is generated. With a tracker, this is the local mirror | main session as spec engineer; spec linter; `/backlog-sync` with a tracker |
 | `docs/product/vision.md` | Problem, user groups, goals, non-goals, success criteria | user |
 | `docs/product/ux-guidelines.md` | The interface yardstick, as numbered rules with date and reason | ux-designer, approved by user |
 | `docs/prototypes/<slug>/` | Throwaway prototypes on their own branch; only the README stays on the default branch | ux-designer; verdict in the story and the guidelines |
@@ -46,15 +46,21 @@ The code carries the same IDs, which is what makes traceability checkable.
 
 ## Stories
 
-A story is a vertical slice of observable behaviour: `draft → review → ready → in-progress → done` (plus
-`superseded`).
+A story is a vertical slice of observable behaviour: `draft → review → ready-for-human-review → ready →
+in-progress → done` (plus `superseded`).
 
+- **The linter is the gate.** `lint-story.ts` checks the spec deterministically. Green → `ready-for-human-review`;
+  the user approves `ready`.
 - **Discovery ends at `ready`.** Engineering moves `ready → in-progress → done`.
+- **1-command rule.** One domain story = one command + its events on one aggregate, at most 4 scenarios. A second
+  command is a second story.
+- **Fast lane.** `type: chore`/`task` for UI tweaks, refactors, dependencies and setup – no Gherkin matching, no
+  formal reviews.
 - **A story that turns out wrong goes back to `review`** with an `[OPEN]` and a row in `OPEN_QUESTIONS.md` – never
   guessed into shape during implementation.
 - **`done` is final.** A change to finished behaviour is a new story.
-- **At most 10 scenarios.** Each is one red → green cycle. More means split.
-- **A scenario title becomes a test title**: `ST-NNN: <scenario title>`. `verify.ts` checks the link.
+- **A scenario title becomes a test title**: `ST-NNN: <scenario title>`. `verify.ts` checks the link for domain
+  stories.
 
 ### Stories from tickets
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -58,8 +58,7 @@ const HOOK_EVENTS = {
 const ALLOW = [
   "Bash(node .claude/skills/event-storming/scripts/validate-events.ts)",
   "Bash(node .claude/skills/event-storming/scripts/render-event-storming.ts)",
-  "Bash(node .claude/skills/user-stories/scripts/validate-stories.ts)",
-  "Bash(node .claude/skills/user-stories/scripts/render-backlog.ts)",
+  "Bash(node .claude/skills/user-stories/scripts/*)",
   "Bash(node .claude/skills/adopt/scripts/*)",
   "Bash(node .claude/skills/backlog/scripts/*)",
   "Bash(node .claude/skills/implement/scripts/*)",
@@ -68,6 +67,21 @@ const ALLOW = [
   "Bash(git status *)",
   "Bash(git diff *)",
   "Bash(git log *)",
+];
+
+/**
+ * Files earlier versions shipped and 0.4 removed. `upgrade` deletes them from an existing installation – but only
+ * when the manifest tracks them and the local copy is unmodified, so a project that customised one keeps it.
+ * Add a path here whenever a workflow file is retired; never prune by "not in the payload", because files from
+ * optional extras and user-added agents are not the installer's to delete.
+ */
+const OBSOLETE = [
+  ".claude/agents/product-owner.md",
+  ".claude/agents/requirements-engineer.md",
+  ".claude/agents/lead-dev.md",
+  ".opencode/agents/product-owner.md",
+  ".opencode/agents/requirements-engineer.md",
+  ".opencode/agents/lead-dev.md",
 ];
 
 export class Installer {
@@ -165,17 +179,52 @@ export class Installer {
   }
 
   copyWorkflowDirs() {
+    const present = new Set();
     for (const dir of WORKFLOW_DIRS) {
       const source = join(PKG, dir);
       if (!existsSync(source)) continue;
       for (const file of walk(source)) {
         const name = toPosix(relative(source, file));
         if (name.split("/").some((part) => SKIP.has(part))) continue;
-        const content = read(file);
+        const key = relPosix(this.root, join(this.root, dir, name));
+        present.add(key);
         // settings.json and opencode.jsonc are merged, not replaced
         if (file === join(source, "settings.json") || file === join(source, "opencode.jsonc")) continue;
-        this.put(join(this.root, dir, name), content);
+        this.put(join(this.root, dir, name), read(file));
       }
+    }
+    this.pruneObsolete(present);
+  }
+
+  /**
+   * Removes the retired workflow files listed in OBSOLETE (e.g. the deleted corporate-roleplay agents).
+   *
+   * Only files recorded in the manifest are candidates, so project content and files from other tools are never
+   * touched. A file the user edited is kept and reported as a conflict – unless `--force` is given, which backs it
+   * up first. This is what makes a removed agent actually disappear from an existing installation on upgrade.
+   */
+  pruneObsolete(present) {
+    for (const key of OBSOLETE) {
+      if (present.has(key)) continue;
+      if (!(key in (this.manifest?.files ?? {}))) continue;
+
+      const path = join(this.root, key);
+      if (!existsSync(path)) {
+        delete this.files[key];
+        continue;
+      }
+
+      const known = this.manifest.files[key];
+      const local = sha(read(path));
+      if (local !== known && !this.force) {
+        this.conflicts.push(key);
+        this.record("conflict", path, "retired, but locally modified – kept");
+        continue;
+      }
+      if (this.force) this.backup(path);
+      if (!this.dryRun) rmSync(path, { force: true });
+      delete this.files[key];
+      this.record("remove", path, "retired workflow file");
     }
   }
 
@@ -391,9 +440,16 @@ This repository runs the Kataster workflow. Discovery lives in \`.claude/skills/
 - **Project checks:** \`docs/engineering/checks.yaml\` – what runs at edit time and Stop/CI; architecture boundaries
   in \`docs/architecture/boundaries.yaml\` with existing debt in the baseline (only new violations fail).
 - **Language:** domain terms exactly as in \`CONTEXT.md\`; UI words from its \`_UI (<lang>)_\` lines.
-- **Traceability:** every scenario has a test titled \`ST-NNN: <scenario title>\`; domain IDs come from
+- **1-command rule:** one story = one command + its events on one aggregate, at most 4 Gherkin scenarios. Full
+  domain stories are \`type: domain\`; UI tweaks, refactors, dependencies and setup use the fast lane
+  (\`type: chore\` or \`type: task\`).
+- **Spec gate:** \`node .claude/skills/user-stories/scripts/lint-story.ts <file>\` must be green. A story the linter
+  accepts becomes \`ready-for-human-review\`; only the user approves \`ready\`.
+- **Traceability:** every domain scenario has a test titled \`ST-NNN: <scenario title>\`; domain IDs come from
   \`docs/domain/events.yaml\`.
 - **ADRs:** new ones are \`proposed\`; only the user sets \`accepted\`. A \`done\` story is never reopened.
+- **Reviews:** \`/implement\` scales review to the diff. \`code-reviewer\` and \`acceptance-tester\` report findings and
+  never create stories; fast-lane stories skip the formal review pass.
 - **Gate:** \`node .claude/skills/implement/scripts/verify.ts\`.
 
 Keep this block short: it is loaded into every session. Put rules into the skill that owns them, not here.

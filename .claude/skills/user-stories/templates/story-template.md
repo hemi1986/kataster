@@ -1,8 +1,11 @@
 ---
 id: ST-001
 title: Short, domain-level title
-type: story
+type: domain
 context: BC-Example
+aggregate: AGG-Example
+command: CMD-Example
+ui: false
 priority: should
 size: null
 risk: null
@@ -17,7 +20,7 @@ status: draft
 As a <role>, I want <goal>, so that <benefit>.
 
 ## Context
-<Trigger, preconditions, business rules>
+<Trigger, preconditions, business rules – from the command's rules and its aggregate's invariants>
 
 ## Acceptance Criteria
 

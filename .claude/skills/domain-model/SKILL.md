@@ -47,7 +47,7 @@ Same word, different meaning in two places → a hint at a bounded context bound
 - An aggregate protects invariants that must be consistent **immediately**. Everything else is eventually consistent via events/policies.
 - Keep them small. Reference other aggregates by ID only.
 - Per aggregate in `events.yaml`: `context`, `invariants` (as testable statements). Assign commands and events via `aggregate`.
-- **An invariant is stated once, on the aggregate** (user, 2026-10-01). A command's `rules` list only what it adds beyond them: defaults, actor permissions no invariant carries, required input, checks across aggregate or context boundaries, and consequences of the transition. Everything the stored state has to satisfy is an invariant, not a rule – the requirements-engineer reads both when deriving scenarios.
+- **An invariant is stated once, on the aggregate** (user, 2026-10-01). A command's `rules` list only what it adds beyond them: defaults, actor permissions no invariant carries, required input, checks across aggregate or context boundaries, and consequences of the transition. Everything the stored state has to satisfy is an invariant, not a rule – the spec engineer reads both when deriving scenarios.
 - Sign of a wrong aggregate: a command needs data from several aggregates to check a rule.
 
 ## 4. Logical Data Model (`docs/architecture/data-model.md`)

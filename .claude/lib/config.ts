@@ -49,6 +49,7 @@ export const DEFAULT_LABEL_PREFIX = "kataster";
 export const DEFAULT_STATUS_MAP: Record<string, string> = {
   draft: "To Do",
   review: "In Review",
+  "ready-for-human-review": "Ready for Review",
   ready: "Ready",
   "in-progress": "In Progress",
   done: "Done",

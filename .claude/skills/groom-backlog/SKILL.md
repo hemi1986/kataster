@@ -15,7 +15,8 @@ every done story, every ADR and every answered open question since then may have
 or differently important. Nothing here is a formality – a grooming run that changes nothing was a wasted run or a
 healthy backlog, and you have to be able to say which.
 
-Do **not** fix anything yourself. Grooming produces a decision for the user and a task for the `requirements-engineer`.
+Do **not** fix anything yourself. Grooming produces a decision for the user. The main session carries the product and
+engineering lenses; it does not delegate them to simulated roles.
 
 ## 1. Mechanical health check
 
@@ -39,22 +40,23 @@ rows in `OPEN_QUESTIONS.md`, and the "revisit when …" lines parked in `docs/re
 this list to the subagents – they cannot see it, and without it they re-read the same stories that were already
 reviewed once.
 
-## 3. Challenge in parallel
+## 3. Challenge – two lenses, one pass
 
-Start in **one** message, with the full file paths, the scope and the change list from step 2:
+The main session holds both lenses at once. Write down which one produced each finding; do not average a conflict
+between them away.
 
-- `product-owner` – is the value still real and still in the vision? Is the story already covered by what was
-  built? Does the MVP slice still hold? Which `must` is not a `must` any more, and which `could` turned out to be
-  one? Which need from the vision still has no story?
-- `lead-dev` – do `depends_on`, `size` and `risk` still fit **now that the code exists**? Which story has become
+- **Value** – is the value still real and still in the vision? Is the story already covered by what was built? Does
+  the MVP slice still hold? Which `must` is not a `must` any more, and which `could` turned out to be one? Which
+  need from the vision still has no story?
+- **Build** – do `depends_on`, `size` and `risk` still fit **now that the code exists**? Which story has become
   smaller because the foundation is there, which bigger? Which dependency is technical fiction? Which story should
-  be split, merged or dropped?
-- `ux-designer` – only for stories with the label `ui` (or an obvious frontend part): does the story still match
-  `docs/product/ux-guidelines.md`, which one builds a screen that a newer story has replaced, and is there an open
-  UX question that needs a prototype (the `prototype` skill) before the story can be reviewed again?
+  be split (one command!), re-typed as `chore`/`task`, or dropped?
 
-Tell each one explicitly: **recommend, don't rewrite** – they change only the frontmatter fields they own
-(`priority` for the PO, `size`/`risk`/`depends_on` for the lead dev), everything else comes back as a proposal.
+For stories with `ui: true` (or an obvious frontend part), ask the `ux-designer` only when a concrete question needs
+it – component/pattern, an open UX decision, or a prototype. It advises; it does not gate.
+
+Do not hand the backlog to subagents: the change list from step 2 is context they cannot see, and re-reading stories
+that were already reviewed once is the cost this workflow removes.
 
 ## 4. Consolidate
 
@@ -62,22 +64,22 @@ Write `docs/reviews/YYYY-MM-DD-backlog-grooming.md`:
 
 - the health-check findings with what they turned out to mean
 - per challenged story: keep / revise / split / merge / drop, with the reason and who said it
-- conflicts between the three – name them, don't average them away
+- conflicts between the two lenses – name them, don't average them away
 - proposed new stories, and stories proposed for `priority: wont`
 - what explicitly stays as it is, so the next run does not re-litigate it
 
 ## 5. The user decides
 
 Present it in rounds, at most 3 questions at a time, each with a recommended answer. Adopt nothing without consent.
-A disagreement between PO and lead-dev is a question for the user, not something to resolve on their behalf.
+A disagreement between value and build is a question for the user, not something to resolve on their behalf.
 
 ## 6. Apply
 
-- Content changes → `requirements-engineer`, referencing the grooming file.
+- Content changes → edit the story in the main session, referencing the grooming file; then re-run the spec linter.
 - **Dropped stories are never deleted**: they get `priority: wont` and keep their file, so the decision stays
   traceable. A story that is wrong rather than unwanted goes back to `status: review` and through `/review-stories`.
 - A `done` story is never reopened – a change to finished behaviour is a new story.
-- New stories from the grooming get `status: draft` and go through `/review-stories` like any other.
+- New stories from the grooming get `status: draft` and go through `/review-stories` like any other (linter → human).
 - With a tracker, push the applied changes (`/backlog-sync push`) before the wrap-up, so Jira/GitHub and the mirror
   agree. A story that is not linked yet stays a local draft until the push creates it.
 

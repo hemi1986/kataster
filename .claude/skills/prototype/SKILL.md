@@ -77,7 +77,7 @@ with a clearly marked throwaway route. The same capture rules apply.
 
 - **`/feature`** – the UX lens proposes a prototype when the frontier leaves a structural UI, flow or state
   question. The user decides. `--prototype[=ui|logic]` makes it explicit. The verdict goes to the
-  `ux-designer` (guidelines) and to the `requirements-engineer` (story), before the stories are reviewed.
+  `ux-designer` (guidelines) and into the story's `## Context` in the main session, before the stories are reviewed.
 - **`/implement`** – only when the user asks (`--prototype`) or a spike's question is a UX/state question. A
   `ui` story whose screen shape is still open was not `ready`; the prototype settles it, then the story goes
   back to `review` if its behaviour changed. The engineering rule holds: never decide a story in the code.

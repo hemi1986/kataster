@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0 – 2026-11-03
+
+- **Spec-driven instead of corporate roleplay.** The `product-owner`, `requirements-engineer` and `lead-dev`
+  subagents are gone (Claude Code and OpenCode). The main session writes stories as a spec engineer with three
+  lenses – domain, architecture, testability – instead of handing them to simulated roles. The `ux-designer` stays
+  as an on-demand utility for `ui: true` stories and the prototyping phase; it never gates.
+- **1-command rule.** One `type: domain` story = one command + its events on one aggregate, at most 4 Gherkin
+  scenarios. `aggregate` and `command` are required frontmatter and are cross-checked against
+  `docs/domain/events.yaml`; the events must be exactly what the command produces. `type: story` remains valid as a
+  legacy alias and is reported as a warning.
+- **Deterministic spec linter.** `node .claude/skills/user-stories/scripts/lint-story.ts [ST-NNN|file]` and
+  `kataster lint-story` check frontmatter, required fields, referential integrity, `Given/When/Then`, the scenario
+  limit and unique titles – no LLM, no tokens. The same rules run in the PostToolUse hook, `story-status.ts` and
+  `verify.ts`. Green → `ready-for-human-review`; only the user approves `ready`.
+- **Fast lane.** `type: chore` and `type: task` for UI tweaks, refactorings, dependencies and setup.
+  `/implement --fast` (or automatic detection) does branch → implement → lint/typecheck/unit tests → pull request,
+  without Gherkin matching or formal subagent reviews. `type: tech-task` and `type: spike` keep their behaviour.
+- **Reviews report, they do not plan.** `code-reviewer` and `acceptance-tester` no longer create, split or revise
+  stories; a finding is fixed in the story or handed back as an open question. Review effort follows the diff, not a
+  T-shirt size. `size` is no longer a gate.
+- **Installer prunes retired workflow files.** `upgrade` deletes the manifest-tracked files named in `OBSOLETE`
+  (the removed agents). Locally modified files are kept and reported; `--force` backs them up first. Optional
+  extras and user-added agents are never pruned.
+
 ## 0.3.1 – 2026-11-02
 
 - **Optional prototyping, owned by the UX designer.** New `prototype` skill (adapted from Matt Pocock's, MIT) builds

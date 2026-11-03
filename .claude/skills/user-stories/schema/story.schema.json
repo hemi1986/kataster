@@ -3,12 +3,15 @@
   "title": "Story frontmatter (docs/stories/ST-NNN-*.md)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "title", "type", "context", "priority", "status"],
+  "required": ["id", "title", "type", "priority", "status"],
   "properties": {
     "id": { "type": "string", "pattern": "^ST-[0-9]{3,}$" },
     "title": { "type": "string", "minLength": 5, "maxLength": 120 },
-    "type": { "enum": ["story", "spike", "tech-task"] },
+    "type": { "enum": ["domain", "chore", "task", "tech-task", "spike", "story"] },
     "context": { "type": "string", "pattern": "^BC-[A-Za-z0-9]+$" },
+    "aggregate": { "type": "string", "pattern": "^AGG-[A-Za-z0-9]+$" },
+    "command": { "type": "string", "pattern": "^CMD-[A-Za-z0-9]+$" },
+    "ui": { "type": "boolean" },
     "priority": { "enum": ["must", "should", "could", "wont"] },
     "size": { "enum": ["XS", "S", "M", "L", "XL", null] },
     "risk": { "enum": ["low", "medium", "high", null] },
@@ -34,6 +37,6 @@
         "url": { "type": "string" }
       }
     },
-    "status": { "enum": ["draft", "review", "ready", "in-progress", "done", "superseded"] }
+    "status": { "enum": ["draft", "review", "ready-for-human-review", "ready", "in-progress", "done", "superseded"] }
   }
 }
