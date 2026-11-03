@@ -10,7 +10,7 @@ La Guardia is software for the pinball museum to manage its pinball machines: re
 ## Sources of Truth
 | Artifact | File | Owner |
 |---|---|---|
-| Vision, user groups, scope | `docs/product/vision.md` | user + product-owner |
+| Vision, user groups, scope | `docs/product/vision.md` | user + main session |
 | UI/UX decisions (yardstick) | `docs/product/ux-guidelines.md` | ux-designer (user approves) |
 | Glossary (ubiquitous language) | `CONTEXT.md` | domain-model skill (event storming, `/feature`, domain-architect, `/implement`) |
 | Event storming model | `docs/domain/events.yaml` | event storming / domain-architect |
@@ -18,10 +18,10 @@ La Guardia is software for the pinball museum to manage its pinball machines: re
 | Context map | `docs/domain/context-map.md` | domain-architect |
 | Logical data model | `docs/architecture/data-model.md` | domain-architect |
 | Architecture decisions (ADRs) | `docs/adr/` | architect skill / domain-architect (user accepts) |
-| Stories | `docs/stories/ST-NNN-*.md` | requirements-engineer; status `in-progress`/`done` by `/implement` |
+| Stories | `docs/stories/ST-NNN-*.md` | main session as spec engineer; spec linter gate; status `in-progress`/`done` by `/implement` |
 | Backlog (generated!) | `docs/stories/BACKLOG.md` | hook – never edit manually |
 | Open questions | `docs/stories/OPEN_QUESTIONS.md` | everyone |
-| Reviews | `docs/reviews/` | review-stories; per story `ST-NNN-acceptance.md` (acceptance-tester) and, in the normal review lane, `ST-NNN-code-review.md` (code-reviewer) |
+| Reviews | `docs/reviews/` | spec linter; per story `ST-NNN-acceptance.md` (acceptance-tester) and, in the normal review lane, `ST-NNN-code-review.md` (code-reviewer) – findings only, no new stories |
 | Engineering conventions, seam catalog | `.claude/skills/engineering-conventions/SKILL.md` | written after ST-003, user approves |
 | Operations routines (updates, later environments, recovery) | `docs/operations/` | `/implement` (ST-061–ST-063) |
 | Application code and tests | repository root (`src/`, …) | `/implement` |
@@ -34,11 +34,11 @@ La Guardia is software for the pinball museum to manage its pinball machines: re
 | `architect` | architectural decisions, ADRs, tech stack |
 | `/grill-with-docs` | grilling + domain-model + architect: interview that writes glossary and ADRs as it goes |
 | `/event-storming`, `/feature` | discovery entry points (see workflow); both start by grilling |
-| `user-stories`, `/review-stories` | story format, validation, review |
+| `user-stories`, `/review-stories` | story format, 1-command rule, spec linter, human approval |
 | `ux-design` | how we decide the interface: the UX frontier to grill, what a story says about a screen, review order |
 | `prototype` | throwaway HTML prototype for a UI or logic question; the verdict goes into the story and the guidelines |
 | `/groom-backlog` | periodic challenge of the open backlog: still worth building, dependencies, priorities |
-| `/implement` | engineering entry point: one story test-first, verify, review, refactor, acceptance by the acceptance tester |
+| `/implement [--fast]` | engineering entry point: domain story test-first with diff-scaled review and acceptance; chore/task fast lane |
 | `tdd` | red → green loop, good tests, seams |
 | `codebase-design` | vocabulary for deep modules: module, interface, depth, seam, adapter, leverage, locality |
 | `/improve-codebase-architecture` | periodic scan for deepening opportunities, then grilling on the chosen one |
@@ -52,7 +52,10 @@ La Guardia is software for the pinball museum to manage its pinball machines: re
 - `events.yaml` and stories are validated by a hook after every write, including story status changes. Fix hook errors immediately, never work around them.
 - Decide the tech stack only after event storming and domain model, via ADR. New ADRs are `proposed`; only the user sets `accepted`. Accepted ADRs are never edited, only superseded (a hook enforces it).
 - The backlog is local by default: stories are Markdown files in `docs/stories/`. With `backlog.provider` = `github` or `jira`, that directory is the local mirror and the tracker is the source of truth.
-- **Traceability in the code**: every Gherkin scenario has a test titled exactly `ST-NNN: <scenario title>`; commands, events, read models and policies carry their ID from `events.yaml`. `verify.ts` checks both.
+- **1-command rule**: one `type: domain` story = one command + its events on one aggregate, at most 4 Gherkin scenarios. `aggregate` and `command` are required and cross-checked against `events.yaml`.
+- **Spec linter**: `node .claude/skills/user-stories/scripts/lint-story.ts <file>` (or `kataster lint-story`). Green → `ready-for-human-review`; only the user approves `ready`. No LLM review pass.
+- **Fast lane**: `type: chore`/`task` for UI tweaks, refactorings, dependencies and setup; `/implement` skips Gherkin matching and formal reviews.
+- **Traceability in the code**: every Gherkin scenario of a domain story has a test titled exactly `ST-NNN: <scenario title>`; commands, events, read models and policies carry their ID from `events.yaml`. `verify.ts` checks both.
 - Story status changes go through `node .claude/skills/implement/scripts/story-status.ts`. A `done` story is never reopened – changes become a new story.
 - Never weaken or delete a test to get green. One branch and one pull request per story; the user merges.
 - Tooling in `.claude/` (hooks, validators, scripts) is TypeScript run directly by Node ≥ 22.18 (type stripping) – no Python, no build step. Erasable TypeScript syntax only. The application has its own build (Next.js).
@@ -69,8 +72,8 @@ La Guardia is software for the pinball museum to manage its pinball machines: re
 Initial discovery:
 1. `/event-storming` – grills the vision, then big picture; afterwards `/event-storming <process>` for detailed flows
 2. `@domain-architect` – contexts, aggregates, data model, glossary, ADR proposals (incl. tech stack)
-3. `@requirements-engineer` – derive stories from events/commands
-4. `/review-stories` – one lead-dev pass (value, build, UX), user approves → `status: ready`
+3. Main session as spec engineer – derive stories from events/commands (one command per story, max. 4 scenarios)
+4. `/review-stories` – spec linter green → `ready-for-human-review`, user approves → `status: ready`
 5. Hand-off: `docs/stories/BACKLOG.md` lists all `ready` stories in implementation order for the engineering workflow
 
 Later features and changes: `/feature <idea>` – grills the idea, runs a focused event storming, updates domain model/ADRs, derives stories (label `feature:<slug>`) and runs the story review on them – the user approves in that review. `--prototype` adds a throwaway prototype between grilling and the stories when a UI, flow or state question cannot be settled on paper.
@@ -80,8 +83,8 @@ Engineering, story by story: `/implement [ST-NNN]` (empty = next ready story who
 2. Test plan – scenario → seam → test; the user is asked only for a seam outside the catalog
 3. Red → green per scenario (`tdd`)
 4. `verify.ts` – lint, module boundaries, types, tests, traceability; the full browser run once before the push, CI repeats it on the pull request
-5. Review, scaled to the risk of the diff – **light lane** (size S, no events/commands/migrations/form input/new dependency): `@acceptance-tester` only; **normal lane**: `@code-reviewer` and `@acceptance-tester` in parallel, `/code-review` for L/XL or shared platform code, `/security-review` when the diff touches input handling, login/roles/session, uploads/files or security headers
-6. Refactor – fix findings in the story, the recommended option without asking; a follow-up story only past the follow-up hurdle (security/data-loss risk or blocks a named story, and can't be fixed in about an hour, and no existing story can take it)
+5. Review, scaled to the risk of the diff – **fast lane** (`chore`/`task`): none, just verify and the PR; **light lane** (texts/layout/links/docs, no command/input/migration/dependency): `@acceptance-tester` only; **normal lane**: `@code-reviewer` and `@acceptance-tester` in parallel, a second bug pass when the diff touches the command layer or shared platform code, a security pass when it touches input handling, login/roles/session, uploads/files or security headers
+6. Refactor – fix findings in the story; a finding too big for the story becomes an open question to the developer, never a review-created story (only the user decides on new stories)
 7. Acceptance tester's verdict → `done`, pull request – **the user only merges** (asked again only when something goes badly wrong); the next story starts in a fresh session
 
 After the foundation stories, per finished bounded context or about every 8–10 **domain** stories: `/improve-codebase-architecture` for the code and `/groom-backlog` for what is still planned – not in between. Progress is measured in done domain stories and scenarios (`docs/stories/BACKLOG.md`), not in the total number of stories. Technical groundwork is pulled in just in time: into the first story that needs it.

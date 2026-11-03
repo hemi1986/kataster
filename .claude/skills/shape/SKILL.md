@@ -64,7 +64,7 @@ Three starting points:
   does not. Confidence is `medium` at best; say what is inferred. If the sibling is central, recommend
   `/adopt <sibling>` as the first slice before committing to a cost range.
 
-## 2. Frame – product owner lens
+## 2. Frame – product lens
 
 Call the `grilling` skill. The frontier:
 
@@ -103,7 +103,7 @@ Produce a recommendation **with at least one alternative and its consequence**, 
 
 The user decides.
 
-## 4. Impact – lead-dev lens
+## 4. Impact – engineering lens
 
 Split the answer into **change** and **build new**. Leave nothing implicit.
 

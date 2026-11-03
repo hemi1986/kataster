@@ -4,9 +4,16 @@ One Markdown file per story: `ST-NNN-short-title.md`. `BACKLOG.md` is generated 
 Rules, format and splitting: `.claude/skills/user-stories/SKILL.md`.
 Template: `.claude/skills/user-stories/templates/story-template.md`.
 
-Workflow: `draft → review → ready → in-progress → done` (plus `superseded`).
+Workflow: `draft → review → ready-for-human-review → ready → in-progress → done` (plus `superseded`).
 
-- Discovery ends at `ready`; `/implement` moves a story to `in-progress` and `done`.
+- The **spec linter** is the gate: `node .claude/skills/user-stories/scripts/lint-story.ts <file>` (or
+  `kataster lint-story`). It checks frontmatter, `aggregate`/`command`/events against `docs/domain/events.yaml`,
+  Gherkin `Given/When/Then` and the scenario limit – deterministically, no LLM.
+- Green → `ready-for-human-review`; **the user approves `ready`**. `/implement` only picks up `ready`.
+- **1-command rule:** one `type: domain` story = one command + its events on one aggregate, at most 4 scenarios.
+- **Fast lane:** `type: chore` or `type: task` for UI tweaks, refactorings, dependencies and setup – no Gherkin
+  matching, no formal reviews. `type: tech-task` keeps its checklist; `type: spike` is a timeboxed question.
+- `ui: true` marks a story with a frontend part; it triggers the on-demand UX utility, never a gate.
 - A story that turns out wrong goes back to `review` with an `[OPEN]` and a row in `OPEN_QUESTIONS.md`.
 - `done` is final: a change to finished behaviour is a new story.
 

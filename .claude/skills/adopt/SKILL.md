@@ -211,9 +211,11 @@ user has not prioritised.
 
 Only when the invocation contains `--stories`, or the user explicitly asks after seeing the table:
 
-- delegate to `requirements-engineer` with the **selected** gaps only, the confirmed IDs from `events.yaml`, the
-  label `adoption:<slug>`, and `ui` for stories with a frontend part;
-- new stories start as `status: draft`; the ones the user wants first go through `/review-stories`.
+- write the stories yourself as the spec engineer (the `user-stories` skill is the method) with the **selected**
+  gaps only, the confirmed IDs from `events.yaml`, `type: domain` with one `command` and its `aggregate`, `ui: true`
+  for stories with a frontend part, and the label `adoption:<slug>`;
+- new stories start as `status: draft`; the ones the user wants first go through the spec linter and
+  `/review-stories`.
 
 **Do not write stories for behaviour that already works** – that turns the backlog into a description of the
 past. Existing behaviour is covered by its tests, and the domain model is the map. If an earlier run created

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { sha } from "../src/util.mjs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -44,6 +45,7 @@ test("installs the workflow into an existing repository", () => {
     ".claude/skills/bootstrap/SKILL.md",
     ".claude/skills/grilling/SKILL.md",
     ".claude/skills/implement/scripts/verify.ts",
+    ".claude/skills/user-stories/scripts/lint-story.ts",
     ".claude/skills/feature/scripts/intake.ts",
     ".claude/skills/shape/SKILL.md",
     ".claude/skills/prototype/SKILL.md",
@@ -74,6 +76,10 @@ test("installs the workflow into an existing repository", () => {
     "docs/stories/README.md",
   ]) {
     assert.ok(existsSync(join(dir, file)), `${file} missing`);
+  }
+  for (const removed of ["product-owner", "requirements-engineer", "lead-dev"]) {
+    assert.ok(!existsSync(join(dir, ".claude", "agents", `${removed}.md`)), `${removed} agent must not be installed`);
+    assert.ok(!existsSync(join(dir, ".opencode", "agents", `${removed}.md`)), `${removed} agent must not be installed`);
   }
 
   const profile = json(dir, ".claude/project.json");
@@ -312,4 +318,29 @@ test("installs the third-party notices with the payload", () => {
   assert.match(notices, /Matt Pocock/);
   assert.match(notices, /MIT License/);
   assert.match(notices, /skills\/prototype\/SKILL\.md/);
+});
+
+test("upgrade prunes the retired agent files", () => {
+  const dir = repo({ "package.json": "{}" });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+
+  const manifestPath = join(dir, ".claude", "install.json");
+  const obsolete = "---\nname: product-owner\n---\n\nRemoved from the workflow.\n";
+  const custom = "---\nname: lead-dev\n---\n\nLocally changed.\n";
+  writeFileSync(join(dir, ".claude/agents/product-owner.md"), obsolete, "utf8");
+  writeFileSync(join(dir, ".claude/agents/lead-dev.md"), custom, "utf8");
+
+  const manifest = json(dir, ".claude/install.json");
+  manifest.files[".claude/agents/product-owner.md"] = sha(obsolete);
+  manifest.files[".claude/agents/lead-dev.md"] = sha("---\nname: lead-dev\n---\n\nOriginal.\n");
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+  const result = run(["upgrade", dir, "--yes", "--no-install"]);
+  assert.equal(result.code, 0, result.out);
+
+  assert.ok(!existsSync(join(dir, ".claude/agents/product-owner.md")), "unmodified retired file is removed");
+  assert.ok(existsSync(join(dir, ".claude/agents/lead-dev.md")), "locally modified retired file is kept");
+  assert.match(result.out, /locally modified/);
+  assert.ok(!(".claude/agents/product-owner.md" in json(dir, ".claude/install.json").files), "pruned file leaves the manifest");
+  assert.ok(".claude/agents/lead-dev.md" in json(dir, ".claude/install.json").files, "kept file stays tracked");
 });

@@ -60,11 +60,11 @@ Do not run an event storming for a bug and do not create a feature slug unless t
 Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md`, `docs/architecture/data-model.md`, `docs/adr/`, `docs/stories/BACKLOG.md`. Find out what already exists for this idea (events, stories, hotspots) before asking anything. With an intake result, use its source and matching story instead of searching from scratch. If a linked story exists, pull the tracker first (`/backlog-sync pull`) so the mirror is current.
 
 ## 2. Grill the idea
-Call the `skill` tool four times, for `grilling`, `domain-model`, `architect` and `ux-design` (the first three are the set of `/grill-with-docs`, which can't be called from a skill). Grill the user until the frontier is empty and they confirm a shared understanding. The grilling carries the three perspectives the story review later only checks – product owner, lead dev, UX. With an intake result, the ticket's claims and the intake's `signals` seed the frontier; unresolved comments and contradictions are the first questions. Typical branches:
-- **PO**: Which problem, for which user group, and what value? Measurable outcome? Does it fit the vision, or touch a non-goal? If it changes scope → update `docs/product/vision.md` with the user. Must vs. could – what ships first?
-- **Lead dev**: Which existing code, data and stories change? Is there a migration? What is hard to test? Where does it cut into stories – each a vertical slice of at most ~10 scenarios?
+Call the `skill` tool four times, for `grilling`, `domain-model`, `architect` and `ux-design` (the first three are the set of `/grill-with-docs`, which can't be called from a skill). Grill the user until the frontier is empty and they confirm a shared understanding. The grilling carries the three perspectives the spec linter cannot check – product, engineering, UX. With an intake result, the ticket's claims and the intake's `signals` seed the frontier; unresolved comments and contradictions are the first questions. Typical branches:
+- **Product**: Which problem, for which user group, and what value? Measurable outcome? Does it fit the vision, or touch a non-goal? If it changes scope → update `docs/product/vision.md` with the user. Must vs. could – what ships first?
+- **Engineering**: Which existing code, data and stories change? Is there a migration? What is hard to test? Where does it cut into stories – one command per story, at most 4 scenarios?
 - Which existing processes, events and stories does it change? What's explicitly out of scope?
-- **UX – does a person see anything?** Almost always yes – then the UX frontier of `ux-design` belongs in the rounds: entry point, the screen's one job, what is shown before acting, what happens afterwards, the rejected, empty, full and no-permission cases, and the UI wording. A feature whose screens nobody named gets them by accident. Stories with a frontend part get the label `ui`.
+- **UX – does a person see anything?** Almost always yes – then the UX frontier of `ux-design` belongs in the rounds: entry point, the screen's one job, what is shown before acting, what happens afterwards, the rejected, empty, full and no-permission cases, and the UI wording. A feature whose screens nobody named gets them by accident. Stories with a frontend part get `ui: true`.
 - **Prototype – is paper enough?** When the UX frontier leaves a structural layout choice, a flow or a state model that cannot be settled in words, the UX lens proposes a prototype: one question, the branch (`ui` or `logic`), the variants or scenarios, and a timebox. The user decides. `--prototype` makes it explicit. Do not propose one for polish or for a question a guideline already answers. If it is agreed, run step 2b before the event storming.
 - New or changed terms → `CONTEXT.md` inline.
 - An architectural trade-off → ADR (`status: proposed`) only if the architect skill's three criteria hold.
@@ -86,9 +86,9 @@ it. In short:
 4. **Capture.** The decision goes to `ux-designer` for `docs/product/ux-guidelines.md` (a G-number when it is
    a recurring rule). Commit `docs/prototypes/<slug>/` on a throwaway branch `prototype/<slug>`, push it only
    if the user wants to share it, then return to the branch you were on. The branch is never merged.
-5. **Into the story.** Pass the verdict and the branch pointer to `requirements-engineer` in section 5: the
-   story's `## Context` gets `Prototype: prototype/<slug> – <question> – <verdict>`, and the scenarios reflect
-   the decision. The `ux-designer` never writes the story itself.
+5. **Into the story.** In section 5 you write the verdict and the branch pointer into the story's `## Context`:
+   `Prototype: prototype/<slug> – <question> – <verdict>`, and the scenarios reflect the decision. The
+   `ux-designer` never writes the story itself.
 
 If the question needs the real application (an existing page, real data), say so: that is an in-app prototype
 and belongs to `/implement`, not to discovery. If the prototype does not answer the question within its
@@ -103,10 +103,10 @@ Read `.claude/skills/event-storming/SKILL.md` and follow it with the feature as 
 - A UX decision changes or adds a guideline → delegate to `ux-designer`: write exactly these decisions into `docs/product/ux-guidelines.md`. A prototype verdict is a decision like any other; the branch pointer and the verdict go into the story through step 5. The audit of existing screens belongs to `/groom-backlog`, not to the feature.
 
 ## 5. Stories
-Delegate to `requirements-engineer`: derive stories for the feature's new or changed commands, policies and read models; name the event/command IDs, the label `feature:<slug>`, the label `ui` for every story with a frontend part, the label `bug` for the bug path, the source reference (`Source: <ref> (<url>)`) for every story derived from a ticket, the UX decisions from step 2 (with the G-numbers of the guidelines they reference), the prototype verdict and branch pointer from step 2b, the story cut from step 2, and existing stories that need revising. Finished stories get `status: review`; have it report the IDs of all stories it created or revised.
+Write the stories yourself as the spec engineer (the `user-stories` skill is the method): derive one story per new or changed command, policy or read model; name `aggregate` and `command` (exactly one each), the event/command IDs, `ui: true` for every story with a frontend part, `type: chore`/`task` for non-domain work, the label `feature:<slug>`, the label `bug` for the bug path, the source reference (`Source: <ref> (<url>)`) for every story derived from a ticket, the UX decisions from step 2 (with the G-numbers of the guidelines they reference), the prototype verdict and branch pointer from step 2b, and existing stories that need revising. Do not merge two commands into one story; if the cut needs more than 4 scenarios, split it. Finished stories get `status: review` and are run through the spec linter.
 
 ## 6. Review
-Read `.claude/skills/review-stories/SKILL.md` and follow it with the story IDs from step 5 as the arguments (only this feature's stories, not everything in `review`). The user still approves every change and every `ready`.
+Read `.claude/skills/review-stories/SKILL.md` and follow it with the story IDs from step 5 as the arguments (only this feature's stories, not everything in `review`). The spec linter must be green before a story reaches `ready-for-human-review`; the user approves every change and every `ready`. There is no separate review subagent.
 
 ## 7. Wrap-up
 Summarize: the source and the route taken (idea, ticket, existing story or bug), glossary changes, new/changed events, ADRs proposed, a prototype run and its verdict (if any), stories created and their review outcome (`ready` vs. still open), open hotspots/questions. Point to `docs/stories/BACKLOG.md`, where `ready` stories are queued for the engineering workflow. For a bug, say which documented rule was restored, or that the rule changed and became a feature.

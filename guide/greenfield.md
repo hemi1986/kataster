@@ -62,12 +62,13 @@ Two kinds of work, kept apart:
 - **The first vertical slice** – the smallest set of stories that delivers one real end-to-end path from the
   vision, each with Gherkin scenarios.
 
-At most 10 scenarios per story; no implementation plan inside a domain story; every story links its `events`.
+One story = one command on one aggregate, at most 4 scenarios; no implementation plan inside a domain story; every domain story links `aggregate`, `command` and its `events`.
 
 ## Phase 6 – Review
 
-`/review-stories` – one lead-dev pass over value, buildability and UX. The user approves every `ready`. With a tracker,
-pull before the review and push the approved stories afterwards (`/backlog-sync`).
+`/review-stories` – the spec linter checks frontmatter, aggregate/command/events, Gherkin and the scenario limit.
+Green → `ready-for-human-review`; you approve every `ready`. With a tracker, pull before the review and push the
+approved stories afterwards (`/backlog-sync`).
 
 ## Phase 7 – Build
 

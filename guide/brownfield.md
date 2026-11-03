@@ -103,8 +103,8 @@ that fails on existing behaviour – that would be a story.
 
 **The first adoption pass creates no stories.** It records the gap in `docs/domain/adoption-report.md` (and open
 questions in `OPEN_QUESTIONS.md`), so the model can be reviewed before anyone commits to work. Only
-`/adopt <scope> --stories` (or an explicit "turn these into stories") delegates the selected gaps to
-`requirements-engineer`.
+`/adopt <scope> --stories` (or an explicit "turn these into stories") turns the selected gaps into stories in the
+main session (spec engineer, spec linter gate).
 
 **Behaviour that already works does not become a story.** That turns the backlog into a description of the past.
 

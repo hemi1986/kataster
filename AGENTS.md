@@ -19,3 +19,20 @@ Rules:
 - A file the installer manages is tracked in `.claude/install.json`; project content (`CONTEXT.md`, `docs/`,
   `project.json`, `AGENTS.md` block) is not. Never make an upgrade overwrite user content.
 - Run `npm test` and `npm run typecheck --prefix .claude` before committing.
+
+## Workflow contract (0.4)
+
+The workflow is spec-driven and mechanical, not a simulated organisation:
+
+- **No product-owner, requirements-engineer or lead-dev subagents.** The main session writes stories as a spec
+  engineer with three lenses (domain, architecture, testability). Only the `ux-designer` remains on demand
+  (`ui: true` / prototyping), and it never gates.
+- **1-command rule:** one `type: domain` story = one command + its events on one aggregate, at most 4 Gherkin
+  scenarios. `aggregate` and `command` are required frontmatter and are cross-checked against `docs/domain/events.yaml`.
+- **Spec linter:** `.claude/skills/user-stories/scripts/lint-story.ts` (also `kataster lint-story`) is the gate.
+  Green → `ready-for-human-review`; the user approves `ready`. No LLM pre-implementation review.
+- **Fast lane:** `type: chore` / `type: task`; `/implement` skips Gherkin matching and formal reviews.
+- **Reviewers report, never plan:** `code-reviewer` and `acceptance-tester` create no stories. Findings are fixed in
+  the story or handed back as open questions.
+- The installer prunes the retired workflow files named in `OBSOLETE` (only manifest-tracked, unmodified ones), so a
+  removed agent disappears on upgrade without touching optional extras or user files.

@@ -36,7 +36,7 @@ for (const [id, scenarios] of superseded) {
 }
 
 for (const [id, s] of stories) {
-  if (only ? id !== only : !["in-progress", "done"].includes(s.meta.status) || s.meta.type !== "story") continue;
+  if (only ? id !== only : !["in-progress", "done"].includes(s.meta.status) || !d.isDomain(s.meta)) continue;
   const { covered, missing: untested } = e.scenarioCoverage(s, titles);
   const missing = untested.filter((sc) => !superseded.get(id)?.has(sc));
   for (const sc of missing) {

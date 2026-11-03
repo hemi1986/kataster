@@ -40,7 +40,7 @@ const out: string[] = [`# Context pack – ${id}: ${story.meta.title}`, ""];
 
 // Story
 out.push("## Story file", "", `\`${d.rel(story.path)}\``, "", "````markdown", storyText.trimEnd(), "````", "");
-if (story.meta.type === "story") {
+if (d.isDomain(story.meta)) {
   out.push("## Test titles (exact)", "", "Every scenario gets one test with exactly this title:", "");
   for (const sc of e.scenarioTitles(story)) out.push(`- \`${e.testTitle(id, sc)}\``);
   out.push("");

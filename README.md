@@ -78,7 +78,7 @@ npx kataster init . --yes --name "Acme" --ui-language de --artifacts en
   skills/               the workflow skills (grilling, event-storming, domain-model, architect, backlog, …)
   skills/adopt/scripts/ repository map and per-package docs for brownfield adoption
   skills/feature/scripts/ read-only intake: story, GitHub/Jira ticket or URL → route
-  agents/               review agents for Claude Code
+  agents/               review agents and the on-demand UX utility (Claude Code)
   hooks/                plain-Node guardrails and validators
   lib/                  deterministic domain/story/backlog logic
 .opencode/
@@ -118,12 +118,36 @@ Existing `CONTEXT.md` and `docs/` are never touched.
 | `/event-storming [process]` | Big-picture or single-process event storming |
 | `/feature <idea \| ST-NNN \| #123 \| PROJ-123>` | New feature from an idea, an existing story or a ticket: intake and routing, grilling, focused storming, model, stories, review; bugs become a regression story; `--prototype` adds a throwaway prototype before the stories |
 | `/shape <idea \| ticket> [--dry-run]` | Before a large feature: frame, place (existing/new context, shared library), impact, slices, rough cost range, recommendation; creates no stories |
-| `/review-stories [ST-…]` | One lead-dev pass (value, build, UX) before a story is `ready` |
+| `/review-stories [ST-…]` | Spec linter gate → `ready-for-human-review`; the user approves `ready` |
 | `/backlog-sync [status\|pull\|push]` | Keep `docs/stories/` in sync with GitHub Issues or Jira |
 | `/groom-backlog [scope]` | Periodic challenge: is this backlog still worth building? |
-| `/implement [ST-NNN]` | Test-first implementation of one story, review, refactor, PR; `--prototype` prototypes an open UI question first |
+| `/implement [ST-NNN] [--fast]` | One story on its branch: domain = test-first, diff-scaled review, acceptance; `chore`/`task` or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first |
 | `/improve-codebase-architecture` | Scan for deepening opportunities, present them, grill one |
 | `/retro` | Retrospective on a session, proposing rule changes |
+
+### Spec-driven stories, fast lane
+
+Stories are written by the main session as a **spec engineer**, not by simulated roles. Three lenses at once –
+domain, architecture, testability – and one mechanical rule: **one story = one command + its events on one
+aggregate**, at most four Gherkin scenarios. `aggregate` and `command` are required frontmatter and are cross-checked
+against `docs/domain/events.yaml`.
+
+The **spec linter** is the gate and costs no LLM tokens:
+
+```bash
+kataster lint-story                      # all stories
+kataster lint-story ST-012               # one story
+node .claude/skills/user-stories/scripts/lint-story.ts docs/stories/ST-012-*.md
+```
+
+Frontmatter and required fields, aggregate/command/event references, Gherkin `Given/When/Then`, the scenario limit
+and unique titles. Green → `ready-for-human-review`; only you approve `ready`. The same rules run in the PostToolUse
+hook and in `verify.ts`.
+
+Non-domain work takes the **fast lane**: `type: chore` (UI tweak, refactor, dependency) or `type: task` (setup).
+`/implement` detects it (or takes `--fast`) and does branch → implement → lint/typecheck/unit tests → PR, without
+Gherkin matching or formal review agents. `type: tech-task` keeps its checklist and acceptance; `type: spike` is a
+timeboxed question.
 
 ### Starting from a ticket
 
@@ -170,7 +194,7 @@ open UI question during engineering; if the prototype changes the story, the sto
 
 1. `npx kataster init --greenfield` → review `.claude/project.json`.
 2. `/bootstrap` → vision grilled, event storming, contexts/aggregates/data model, tech-stack ADR, UX guidelines.
-3. `/review-stories` → the first foundation tech tasks and the first vertical slice become `ready`.
+3. `/review-stories` → the spec linter turns finished stories into `ready-for-human-review`; you approve `ready`.
 4. `/implement` → one story at a time, test-first, reviewed, merged by you.
 5. `/feature <idea>` for everything after that.
 
@@ -304,8 +328,9 @@ For Jira, `jira-plan.ts` prints the exact MCP calls, `jira-record.ts` writes the
   ```
 - **`verify.ts`** is the one gate: project checks, artifact validity, scenario ↔ test traceability, domain IDs in
   the code, glossary language.
-- **Review agents** never write code: `code-reviewer` and `acceptance-tester` report, the acceptance verdict decides
-  whether a story is `done`.
+- **Review agents** never write code or stories: `code-reviewer` and `acceptance-tester` report findings, the
+  acceptance verdict decides whether a domain story is `done`, and a finding is fixed in the story or handed back
+  as an open question. `ux-designer` is an on-demand utility (`ui: true`), never a gate.
 
 ## Upgrading
 

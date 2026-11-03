@@ -155,8 +155,8 @@ silently – ask the user.
 
 ## When to sync
 
-- after `requirements-engineer` created or changed stories → `push`
-- after `product-owner` or `lead-dev` changed `priority`, `size`, `risk`, `depends_on` → `push`
+- after the main session created or changed stories (spec engineer) → `push`
+- after `priority`, `size`, `risk` or `depends_on` changed → `push`
 - before `/review-stories` → `pull`, then review, then `push` the approved stories
 - before `/implement` → `pull`; after each status change the workflow updates the tracker (GitHub directly, Jira by
   the printed MCP transition), and after `done` → `push`

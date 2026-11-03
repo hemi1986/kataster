@@ -7,6 +7,7 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "lint:story": "node skills/user-stories/scripts/lint-story.ts",
     "validate": "node skills/event-storming/scripts/validate-events.ts && node skills/user-stories/scripts/validate-stories.ts",
     "render": "node skills/event-storming/scripts/render-event-storming.ts && node skills/user-stories/scripts/render-backlog.ts",
     "typecheck": "tsc -p ."

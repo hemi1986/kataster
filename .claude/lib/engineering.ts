@@ -66,13 +66,15 @@ export const testTitle = (id: string, scenario: string): string => `${id}: ${sce
 // Status workflow
 // --------------------------------------------------------------------------
 /**
- * Allowed single steps. Discovery owns draft/review/ready; engineering moves ready → in-progress → done
- * and sends a story back to review when it turns out to be wrong. `done` is final: changes to finished
- * behaviour become a new story.
+ * Allowed single steps. Discovery owns draft/review/ready-for-human-review; the linter sets the review state, the
+ * user approves `ready`. Engineering moves ready → in-progress → done and sends a story back to review when it turns
+ * out to be wrong. `done` is final: changes to finished behaviour become a new story.
  */
 const TRANSITIONS: Record<string, string[]> = {
   draft: ["review", "superseded"],
-  review: ["draft", "ready", "superseded"],
+  review: ["draft", "ready-for-human-review", "superseded"],
+  // The linter gate passed; only the user turns this into `ready`.
+  "ready-for-human-review": ["draft", "review", "ready", "superseded"],
   ready: ["review", "in-progress", "superseded"],
   "in-progress": ["review", "done"],
   done: [],
@@ -106,7 +108,7 @@ export function transitionErrors(story: d.Story, from: string, to: string, stori
     errs.push(
       from === "done" || from === "superseded"
         ? `a ${from} story is never reopened – capture the change as a new story`
-        : `status '${from}' cannot become '${to}' (workflow: draft → review → ready → in-progress → done, back to review when a story is wrong; superseded from any status before in-progress)`,
+        : `status '${from}' cannot become '${to}' (workflow: draft → review → ready-for-human-review → ready → in-progress → done, back to review when a story is wrong; superseded from any status before in-progress)`,
     );
     return errs;
   }
@@ -114,8 +116,12 @@ export function transitionErrors(story: d.Story, from: string, to: string, stori
     const open = list(story.meta.depends_on).filter((dep) => stories.get(dep)?.meta.status !== "done");
     if (open.length) errs.push(`depends on stories that are not done yet: ${open.join(", ")}`);
   }
+  // The linter gate and the user's approval are two separate steps; skipping one defeats the workflow.
+  if (to === "ready" && from !== "ready-for-human-review") {
+    errs.push("'ready' needs 'ready-for-human-review' first – run the spec linter and let the user approve");
+  }
   if (to === "done") {
-    if (story.meta.type === "story") {
+    if (d.isDomain(story.meta)) {
       const cov = scenarioCoverage(story);
       if (cov.missing.length) {
         errs.push(`scenarios without a test titled '${d.storyId(story)}: <scenario title>': ${cov.missing.map((m) => `"${m}"`).join(", ")}`);

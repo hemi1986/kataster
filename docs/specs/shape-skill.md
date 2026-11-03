@@ -17,7 +17,7 @@ park, or no-go. It creates **no stories**. Stories remain the only work items.
 ## Why this exists
 
 The workflow currently jumps from "idea" to `/feature` (which decides to build and ends in stories) or to
-`/bootstrap` (the whole project). There is no artifact for the question a product owner actually asks about a large
+`/bootstrap` (the whole project). There is no artifact for the question a product lead actually asks about a large
 idea: *is this worth it, where does it land, and what does it drag in?* `/grill-me` asks good questions but produces
 no artifact; `/groom-backlog` only challenges work that already exists.
 
@@ -84,7 +84,7 @@ Say what you found and what it implies; do not let a config key become an archit
 Only with a reference: resolve it, summarize the source in 3–5 lines, confirm the summary. Note the source in the
 brief (`source: …`). Never copy a ticket's solution language into the problem statement.
 
-### 1. Frame – product owner lens
+### 1. Frame – product lens
 
 Use the `grilling` skill. The frontier is:
 
@@ -116,7 +116,7 @@ Produce a recommendation **with at least one alternative and its consequence**, 
 
 Confidence: `high` (model and code agree), `medium` (evidence, some unknowns), `low` (no model / no data).
 
-### 3. Impact – lead-dev lens
+### 3. Impact – engineering lens
 
 Split the answer into **change** and **build new**. Leave nothing implicit.
 

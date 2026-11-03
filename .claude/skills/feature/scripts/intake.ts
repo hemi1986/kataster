@@ -94,7 +94,7 @@ function storyRef(story: d.Story): StoryRef {
     path: d.rel(story.path),
     title: String(story.meta.title ?? ""),
     status: String(story.meta.status ?? ""),
-    type: String(story.meta.type ?? "story"),
+    type: String(story.meta.type ?? "domain"),
   };
 }
 

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { Installer, VERSION } from "./install.mjs";
@@ -12,6 +12,8 @@ const HELP = `Kataster ${VERSION} – agent workflow for domain-driven discovery
 Usage:
   kataster init [dir]      Install the workflow into a repository (default: .)
   kataster upgrade [dir]   Update the workflow, keep project content and local changes
+  kataster lint-story [ST-NNN|file]
+                           Deterministic spec linter for stories (no LLM); empty = all stories
   kataster doctor [dir]    Check the installation
   kataster --version
   kataster --help
@@ -99,8 +101,8 @@ Useful commands afterwards:
   /grill-me /grill-with-docs   sharpen a plan and write the docs as you go
   /event-storming              explore a process or the whole domain
   /feature <idea>              add a feature through grilling, storming, stories
-  /review-stories              one lead-dev pass before a story is ready
-  /implement [ST-NNN]          test-first implementation of one story
+  /review-stories              linter gate + human approval before a story is ready
+  /implement [ST-NNN]          test-first implementation of one story (--fast for chore/task)
   /backlog-sync                pull/push the backlog mirror (Jira or GitHub Issues)
   /retro                       retrospective on a session
 `);
@@ -219,6 +221,36 @@ async function upgrade(options) {
   console.log("\nUpgrade complete. Project content (CONTEXT.md, docs/domain, docs/stories, ADRs) was not touched.");
 }
 
+/** Nearest directory that has the story linter installed (the repository of the given file, or an ancestor). */
+function findInstallRoot(start) {
+  let dir = resolve(start);
+  if (dir.endsWith(".md")) dir = dirname(dir);
+  for (;;) {
+    if (existsSync(join(dir, ".claude", "skills", "user-stories", "scripts", "lint-story.ts"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * `kataster lint-story [ST-NNN|file]` – delegates to the installed spec linter. Deterministic: the same checks
+ * the hook, `/review-stories` and `verify.ts` run, without an LLM.
+ */
+function lintStory(options) {
+  const arg = options._[1];
+  const root = findInstallRoot(arg && arg.endsWith(".md") ? arg : (arg && /^ST-/i.test(arg) ? process.cwd() : (arg || process.cwd())));
+  if (!root) {
+    throw new Error("No Kataster installation found (missing .claude/skills/user-stories/scripts/lint-story.ts) – run `kataster init` first.");
+  }
+  const script = join(root, ".claude", "skills", "user-stories", "scripts", "lint-story.ts");
+  const args = [script];
+  if (arg) args.push(arg.endsWith(".md") ? resolve(arg) : arg);
+  if (options.json) args.push("--json");
+  const r = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit" });
+  process.exitCode = r.status ?? 1;
+}
+
 function doctor(options) {
   const root = resolve(options._[1] ?? ".");
   const checks = [];
@@ -230,6 +262,11 @@ function doctor(options) {
   add("Install manifest", Boolean(manifest), manifest ? `version ${manifest.version}` : "missing – run init");
   const leftovers = existsSync(join(root, ".laguardia")) || existsSync(join(root, ".opencode", "plugins", "laguardia"));
   add("No leftovers from the old name", !leftovers, leftovers ? "run upgrade to migrate them" : "");
+  const retired = [
+    ".claude/agents/product-owner.md", ".claude/agents/requirements-engineer.md", ".claude/agents/lead-dev.md",
+    ".opencode/agents/product-owner.md", ".opencode/agents/requirements-engineer.md", ".opencode/agents/lead-dev.md",
+  ].filter((file) => existsSync(join(root, file)));
+  add("No retired role-play agents", retired.length === 0, retired.join(", ") || "clean");
   const profile = readJson(join(root, ".claude", "project.json"));
   add("Project profile", Boolean(profile?.name), profile?.name ?? "missing");
 
@@ -238,7 +275,7 @@ function doctor(options) {
   add("Backlog provider", ["local", "github", "jira"].includes(provider), provider);
   if (provider === "jira") {
     add("Backlog: Jira project", Boolean(backlog.jira?.project), backlog.jira?.project || "backlog.jira.project is missing");
-    const statuses = ["draft", "review", "ready", "in-progress", "done", "superseded"];
+    const statuses = ["draft", "review", "ready-for-human-review", "ready", "in-progress", "done", "superseded"];
     const missingStatuses = statuses.filter((status) => !backlog.jira?.statusMap?.[status]);
     add("Backlog: Jira status map", missingStatuses.length === 0, missingStatuses.join(", ") || "all statuses mapped");
     const priorities = ["must", "should", "could", "wont"];
@@ -296,6 +333,7 @@ export async function main(argv) {
   const command = options._[0];
   if (command === "init") return init(options);
   if (command === "upgrade") return upgrade(options);
+  if (command === "lint-story") return lintStory(options);
   if (command === "doctor") return doctor(options);
   throw new Error(`Unknown command '${command}'. Try --help.`);
 }
