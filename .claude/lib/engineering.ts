@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import * as d from "./discovery.ts";
+import * as research from "./research.ts";
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v : []);
 
@@ -115,6 +116,11 @@ export function transitionErrors(story: d.Story, from: string, to: string, stori
   if (to === "in-progress" || to === "done") {
     const open = list(story.meta.depends_on).filter((dep) => stories.get(dep)?.meta.status !== "done");
     if (open.length) errs.push(`depends on stories that are not done yet: ${open.join(", ")}`);
+  }
+  // The research gate is deterministic and applies at the status change, never retroactively: an existing `ready`
+  // or `done` story is not re-opened because the gate learned about its risk after approval.
+  if (to === "ready-for-human-review" || to === "ready") {
+    errs.push(...research.researchGateErrors(story.meta));
   }
   // The linter gate and the user's approval are two separate steps; skipping one defeats the workflow.
   if (to === "ready" && from !== "ready-for-human-review") {

@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- **Research as evidence.** New read-only `researcher` agent (Claude Code and OpenCode) that searches specs,
+  standards and exact-version official documentation and returns structured findings with source, retrieval date,
+  tier and confidence – no writes, no shell, no decisions. `/research <question>` runs the workflow directly;
+  `/feature --research` forces the step when the trigger list (auth/identity, security, payment, privacy,
+  accessibility, performance, new technology) would not catch it.
+- **Persisted research files.** Findings live in `docs/research/<topic>.md` with `topic`, `question`, `created`,
+  `retrieved`, `expires` and `stack`; the main session writes them verbatim and computes `expires` from
+  `research.expiryMonths` (default 12, month-end clamped). `research-check.ts` validates the format and expiry
+  (`--topic`, `--referenced`, `--all`, `--json`) and `verify.ts` runs the referenced check as an advisory step.
+- **Deterministic research gate.** Stories can cite `sources:` (an `https://…` URL or a local research file). A story
+  with `risk: high` or a configured gate label (`security`, `auth`, `payment`, `privacy` by default, matched exactly
+  or by prefix) needs at least one resolvable source before `ready-for-human-review`; `lint-story` warns for
+  `draft`/`review`, `story-status.ts` and the validation hook block the transition. Existing `ready`/`done` stories
+  stay green, and expiry is a warning, never a gate error. `sources` survives the GitHub/Jira backlog round-trip and
+  appears in the implementation context pack.
+- **Grilling integration.** `grilling`, `feature`, `shape`, `user-stories`, `review-stories` and `implement` cite
+  research findings instead of inventing "best practice"; a finding that contradicts the model is a grilling
+  question. `shape` adds `## Evidence` to the initiative and uses findings as a cost anchor, never as the estimate.
+  The payload ships `templates/docs/research/README.md`, the research skill and template, and the installer allows
+  the research scripts.
+
 ## 0.5.0 – 2026-11-07
 
 - **Honest aggregate status.** Aggregates in `docs/domain/events.yaml` can be `target` (the default when the field

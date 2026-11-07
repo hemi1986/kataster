@@ -17,6 +17,7 @@ is what to read when you are unsure where something belongs.
 | Vision, user groups, scope | `docs/product/vision.md` | user + main session |
 | Initiative briefs (proposals, no stories) | `docs/product/initiatives/<slug>.md` | `/shape`; user accepts |
 | UI/UX decisions (yardstick) | `docs/product/ux-guidelines.md` | `ux-designer` (user approves) |
+| Research evidence (expiry) | `docs/research/<topic>.md` | `researcher` (read-only); main session writes; user confirms findings |
 | Prototypes (throwaway, on branch `prototype/<slug>`) | `docs/prototypes/<slug>/` | `ux-designer`; verdict in the story and `ux-guidelines.md` |
 | Glossary (ubiquitous language) | `CONTEXT.md` | `domain-model` skill |
 | Event storming model | `docs/domain/events.yaml` | event storming / `domain-architect` |
@@ -54,8 +55,9 @@ is what to read when you are unsure where something belongs.
 | `slice-doc.ts` | cross-cutting concept slice → `.claude/rules/<context>.md` with `paths:` frontmatter |
 | `characterize.ts` | affected story/paths → existing tests and files with no test; the input for characterization tests |
 | `grilling` (`/grill-me`) | relentless interview in rounds with recommended answers – how we ask questions |
+| `/research <question>` | one cross-cutting question as evidence: check existing research and expiry, read-only researcher, findings in `docs/research/<topic>.md`, cited in grilling and stories |
 | `/grill-with-docs` | grilling + `domain-model` + `architect`: writes glossary and ADRs as it goes |
-| `/event-storming [process]`, `/feature <idea \| ST-NNN \| ticket>` | discovery entry points; both start by grilling. `/feature` resolves a story or ticket read-only and routes bugs to a regression story; `--prototype` adds a throwaway prototype before the stories |
+| `/event-storming [process]`, `/feature <idea \| ST-NNN \| ticket>` | discovery entry points; both start by grilling. `/feature` resolves a story or ticket read-only and routes bugs to a regression story; `--prototype` adds a throwaway prototype before the stories; `--research` forces the research step |
 | `user-stories`, `/review-stories` | story format, 1-command rule, spec linter, human approval |
 | `backlog`, `/backlog-sync` | local / GitHub Issues / Jira mirror, sync and conflict rules |
 | `ux-design` | how we decide the interface: the UX frontier, what a story says about a screen, review order |
@@ -138,6 +140,11 @@ is what to read when you are unsure where something belongs.
   source is recorded in the story (`Source: …`), its acceptance criteria are grilled like any other claim, and
   `external` is still written only by the backlog sync. A bug is a story with the label `bug`, not a separate type; a
   change to a documented rule is a feature, because the rule changes.
+- **Research is evidence, not a specification.** Auth/identity, security, payment, privacy, accessibility,
+  performance and new technologies are researched before the round that depends on them; `/feature --research`
+  forces it. The `researcher` is read-only and the only path to web content. Findings live in
+  `docs/research/<topic>.md` with an expiry; only a finding the user confirms becomes a testable criterion. A story
+  with `risk: high` or a configured gate label needs a resolvable `sources:` entry before `ready-for-human-review`.
 - **Prototypes are throwaway.** One question, one self-contained HTML file under `docs/prototypes/<slug>/`,
   captured on a throwaway branch `prototype/<slug>` and never merged. The decision lands in the story
   (`Prototype: …`) and, when it is a recurring rule, in `ux-guidelines.md` as a G-number. No tests, no
@@ -155,6 +162,11 @@ are `ready`. A monorepo is adopted slice by slice: finish one domain plus its sh
 larger than one feature goes through `/shape` first and then `/feature` per slice. When a UI, flow or state
 question cannot be settled on paper, `/feature --prototype` adds a throwaway prototype between grilling and the
 stories; the verdict goes into the story and the UX guidelines.
+
+Cross-cutting questions – auth, security, payment, privacy, accessibility, performance, a new library or technology –
+are researched before the round that depends on them: `/research` or the research step of `/feature`, with findings
+in `docs/research/<topic>.md`, an expiry and a citation in the story's `sources:`. `/feature --research` forces the
+step. Research is evidence for the grilling, never a decision; an expired file is refreshed before approval.
 
 Engineering, story by story: `/implement [ST-NNN]` (empty = next ready story whose dependencies are done). Domain
 lane: prepare → test plan → **characterization net for untested existing behaviour** → red/green per scenario →
@@ -183,5 +195,7 @@ domain stories – not in between. Progress is measured in done domain stories a
   MCP tools; the local mirror keeps validation and traceability deterministic.
 - **Preview provider** (optional, `review.preview` in `.claude/project.json`): with it, acceptance testing uses the
   branch preview; without it, the reviewers work from the code.
+- **Web access** goes through the read-only `researcher` (web search/fetch only; no write, no shell). The main
+  session receives structured findings and never fetches pages itself.
 - Never work around missing access silently (no token in a file, no login in the background) – report it and let the
   user decide.

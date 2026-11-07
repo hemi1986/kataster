@@ -31,6 +31,10 @@ The workflow is spec-driven and mechanical, not a simulated organisation:
   scenarios. `aggregate` and `command` are required frontmatter and are cross-checked against `docs/domain/events.yaml`.
 - **Spec linter:** `.claude/skills/user-stories/scripts/lint-story.ts` (also `kataster lint-story`) is the gate.
   Green → `ready-for-human-review`; the user approves `ready`. No LLM pre-implementation review.
+- **Research is evidence, not a specification.** Only the read-only `researcher` fetches web content (`/research`,
+  `/feature --research`); findings live in `docs/research/<topic>.md` with an expiry and are cited from a story's
+  `sources:`. A gated story (`risk: high` or a configured label) needs a resolvable source before
+  `ready-for-human-review`; only a confirmed finding becomes a testable criterion.
 - **Fast lane:** `type: chore` / `type: task`; `/implement` skips Gherkin matching and formal reviews.
 - **Honest aggregates:** `status: target` (default when missing), `as-is` with evidence, or `unresolved` with an
   open hotspot. A story on an `unresolved` aggregate cannot leave `review`. `/adopt` writes `as-is`/`unresolved`,

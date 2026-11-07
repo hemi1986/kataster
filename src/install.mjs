@@ -59,6 +59,7 @@ const ALLOW = [
   "Bash(node .claude/skills/event-storming/scripts/validate-events.ts)",
   "Bash(node .claude/skills/event-storming/scripts/render-event-storming.ts)",
   "Bash(node .claude/skills/user-stories/scripts/*)",
+  "Bash(node .claude/skills/research/scripts/*)",
   "Bash(node .claude/skills/adopt/scripts/*)",
   "Bash(node .claude/skills/backlog/scripts/*)",
   "Bash(node .claude/skills/implement/scripts/*)",
@@ -433,6 +434,9 @@ This repository runs the Kataster workflow. Discovery lives in \`.claude/skills/
   local mirror and the tracker is the source of truth – sync with \`/backlog-sync\`; \`BACKLOG.md\` stays generated.
 - **Map:** \`docs/workflow.md\` – sources of truth, commands, phases, rules. Read it when unsure where something
   belongs.
+- **Research:** cross-cutting questions go through the read-only \`researcher\` (\`/research\`,
+  \`/feature --research\`); findings live in \`docs/research/<topic>.md\` with an expiry and are cited from a story's
+  \`sources:\`. Evidence, not a specification.
 - **Repo map (brownfield):** \`docs/architecture/repo-map.md\` – packages, dependency edges, consumers, adopted
   slices. A package's \`AGENTS.md\` is loaded only when you work there; the root file stays free of domain.
 - **Start:** greenfield → \`/bootstrap\`; existing code → \`/adopt\` (in slices, not the whole monorepo).

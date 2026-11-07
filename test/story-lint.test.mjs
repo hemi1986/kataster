@@ -322,3 +322,56 @@ ${scenarios(5)}
   assert.match(result.out, /legacy name of 'domain'/);
   assert.match(result.out, /at most 4/);
 });
+
+test("a high-risk story without sources warns in the linter and blocks the transition", () => {
+  const dir = setup(story(scenarios(2), "risk: high\n"));
+  const linted = lint(dir, ["ST-001"]);
+  assert.equal(linted.code, 0, linted.out);
+  assert.match(linted.out, /risk 'high' requires at least one 'sources:' entry before ready-for-human-review/);
+
+  const blocked = status(dir, "ST-001", "ready-for-human-review");
+  assert.equal(blocked.code, 1, blocked.out);
+  assert.match(blocked.out, /risk 'high' requires at least one 'sources:' entry/);
+  assert.match(readFileSync(join(dir, "docs/stories/ST-001-place-order.md"), "utf8"), /^status: review$/m);
+});
+
+test("a high-risk story with a web source passes the research gate", () => {
+  const dir = setup(story(scenarios(2), "risk: high\nsources: [https://example.com/spec]\n"));
+  const linted = lint(dir, ["ST-001"]);
+  assert.equal(linted.code, 0, linted.out);
+  assert.doesNotMatch(linted.out, /requires at least one 'sources:'/);
+
+  const passed = status(dir, "ST-001", "ready-for-human-review");
+  assert.equal(passed.code, 0, passed.out);
+  assert.match(passed.out, /review → ready-for-human-review/);
+});
+
+test("an existing ready high-risk story without sources stays green and is not gated retroactively", () => {
+  const dir = setup(story(scenarios(2), "risk: high\n").replace("status: review", "status: ready"));
+  const linted = lint(dir, ["ST-001"]);
+  assert.equal(linted.code, 0, linted.out);
+  assert.doesNotMatch(linted.out, /requires at least one 'sources:'/);
+});
+
+test("the research gate matches a configured label by prefix", () => {
+  const dir = setup(story(scenarios(2), "labels: [security:oauth]\n"));
+  const linted = lint(dir, ["ST-001"]);
+  assert.equal(linted.code, 0, linted.out);
+  assert.match(linted.out, /label 'security:oauth' requires at least one 'sources:' entry/);
+
+  const blocked = status(dir, "ST-001", "ready-for-human-review");
+  assert.equal(blocked.code, 1, blocked.out);
+  assert.match(blocked.out, /label 'security:oauth' requires at least one 'sources:' entry/);
+});
+
+test("a missing local research file warns and does not satisfy the gate", () => {
+  const dir = setup(story(scenarios(2), "risk: high\nsources: [docs/research/missing.md]\n"));
+  const linted = lint(dir, ["ST-001"]);
+  assert.equal(linted.code, 0, linted.out);
+  assert.match(linted.out, /research source 'docs\/research\/missing\.md' does not exist/);
+
+  const blocked = status(dir, "ST-001", "ready-for-human-review");
+  assert.equal(blocked.code, 1, blocked.out);
+  assert.match(blocked.out, /no resolvable source/);
+  assert.match(blocked.out, /docs\/research\/missing\.md/);
+});

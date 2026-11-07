@@ -224,6 +224,15 @@ export function buildProfile(root, { name, kind, uiLanguage, artifactLanguage, d
         },
       },
     },
+    // Research files expire. The gate asks for `sources:` on risky work before it reaches ready-for-human-review.
+    // Keep the defaults in sync with .claude/lib/config.ts (DEFAULT_RESEARCH_CONFIG).
+    research: {
+      expiryMonths: 12,
+      gate: {
+        risk: ["high"],
+        labels: ["security", "auth", "payment", "privacy"],
+      },
+    },
     setup: {
       envFile: "",
       envHint: "",

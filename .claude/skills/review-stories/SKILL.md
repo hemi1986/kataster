@@ -27,16 +27,26 @@ agent does not approve on their behalf.
 3. **Warnings that matter**: a `ui: true` story with no empty/rejection case, a legacy `type: story`, a scenario that
    reads like a UX guideline restated. Fix what is clearly right; leave the rest as a note in the review summary.
    This is not a second discovery – adopt nothing that changes a decision from the grilling without asking.
-4. **Tracker link**: with a tracker, push unlinked stories (`/backlog-sync push ST-001 …`) **before** setting
+4. **Research gate**: run
+
+   ```bash
+   node .claude/skills/research/scripts/research-check.ts --referenced
+   ```
+
+   A gate warning – a `risk: high` or gate-label story without a resolvable `sources:` entry – is **blocking** for
+   the transition; `story-status.ts` refuses it. Add the source or revise the risk/labels with the user. Expired
+   files are advisory for the gate, but refresh them before approval: a story is not approved on stale evidence. A
+   missing local file on a non-gated story is only a warning; on a gated story it is the blocking case above.
+5. **Tracker link**: with a tracker, push unlinked stories (`/backlog-sync push ST-001 …`) **before** setting
    `ready` – the push creates the issue and writes `external`; without it the validator refuses `ready`.
-5. **Linter green → `ready-for-human-review`**:
+6. **Linter green → `ready-for-human-review`**:
 
    ```bash
    node .claude/skills/implement/scripts/story-status.ts ST-NNN ready-for-human-review
    ```
 
    The script validates the file and refuses on any lint error.
-6. **The user approves** – present one short table (ID, title, type, command/aggregate, scenario count, warnings) and
+7. **The user approves** – present one short table (ID, title, type, command/aggregate, scenario count, warnings) and
    ask for approval. On approval:
 
    ```bash
@@ -45,7 +55,7 @@ agent does not approve on their behalf.
 
    With a tracker, push again so body, labels and status agree. If the user declines, the story goes back to
    `review` or `draft` with their reason.
-7. **UX on demand only**: a story with `ui: true` may get a component/Figma proposal from the `ux-designer`, but
+8. **UX on demand only**: a story with `ui: true` may get a component/Figma proposal from the `ux-designer`, but
    only when the user asks. It is advice, never a gate – do not wait for it.
-8. Wrap-up: run `node .claude/skills/user-stories/scripts/lint-story.ts`, show the status overview and point to
+9. Wrap-up: run `node .claude/skills/user-stories/scripts/lint-story.ts`, show the status overview and point to
    `docs/stories/BACKLOG.md` (regenerated automatically), where `ready` stories are queued for engineering.

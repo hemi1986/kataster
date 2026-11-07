@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { stringify } from "yaml";
 import * as d from "../../../lib/discovery.ts";
 import * as e from "../../../lib/engineering.ts";
+import * as research from "../../../lib/research.ts";
 
 const id = process.argv[2]?.toUpperCase();
 if (!id) {
@@ -53,6 +54,36 @@ if (deps.length) {
   for (const dep of deps) {
     const s = stories.get(dep);
     out.push(`- ${dep} – ${s?.meta.title ?? "(missing)"} – **${s?.meta.status ?? "?"}**`);
+  }
+  out.push("");
+}
+
+// Research sources: evidence the story cites. Expiry is advisory, but a missing or invalid file is a finding.
+const sources = research.sourceRefs(story.meta);
+if (sources.length) {
+  out.push(
+    "## Research sources",
+    "",
+    "Research is evidence, not a specification. When a scenario depends on a cited finding, read the file before implementing it.",
+    "",
+  );
+  for (const ref of sources) {
+    if (!research.isLocalResearchRef(ref)) {
+      out.push(`- ${ref}`);
+      continue;
+    }
+    const state = research.researchStatus(research.researchPath(ref));
+    if (state.status === "missing" || state.status === "invalid") {
+      out.push(`- \`${ref}\` – **${state.status.toUpperCase()}**`);
+      continue;
+    }
+    const detail = [
+      state.question ? `question: ${state.question}` : "",
+      state.retrieved ? `retrieved ${state.retrieved}` : "",
+      state.expires ? `expires ${state.expires}` : "",
+      state.status === "expired" ? "**EXPIRED**" : "",
+    ].filter(Boolean);
+    out.push(`- \`${ref}\`${detail.length ? ` – ${detail.join(" · ")}` : ""}`);
   }
   out.push("");
 }

@@ -1,8 +1,8 @@
 ---
 name: feature
-description: Entry point for a new feature or change once the initial discovery is done – accepts a free-text idea, an existing story (`ST-NNN`) or a ticket (`#123`, `PROJ-123`, URL), grills the idea, runs a focused event storming, updates domain model and ADRs, derives stories into the backlog (local, or the tracker mirror) and runs the story review; bug tickets go to a regression story instead; `--prototype` adds a throwaway prototype before the stories.
+description: Entry point for a new feature or change once the initial discovery is done – accepts a free-text idea, an existing story (`ST-NNN`) or a ticket (`#123`, `PROJ-123`, URL), grills the idea, runs a focused event storming, updates domain model and ADRs, derives stories into the backlog (local, or the tracker mirror) and runs the story review; bug tickets go to a regression story instead; `--prototype` adds a throwaway prototype before the stories; `--research` forces the research step for a cross-cutting question.
 disable-model-invocation: true
-argument-hint: "<idea | ST-NNN | #issue | PROJ-123 | URL> [--prototype[=ui|logic]]"
+argument-hint: "<idea | ST-NNN | #issue | PROJ-123 | URL> [--prototype[=ui|logic]] [--research]"
 ---
 
 # New Feature
@@ -11,6 +11,8 @@ The argument is a feature idea, an existing story or a ticket. Empty → ask the
 Pick a short kebab-case slug for it (e.g. `order-photos`); stories get the label `feature:<slug>`.
 `--prototype[=ui|logic]` is a flag, not part of the idea: strip it before resolving a reference. It asks for a
 prototype before the stories are written; without a branch the `prototype` skill picks it from the question.
+`--research` is a flag too: strip it before resolving a reference. It forces the research step for a topic the
+trigger list in step 2 does not catch.
 
 ## 0. Intake – when the argument is a reference
 
@@ -61,6 +63,7 @@ Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/do
 
 ## 2. Grill the idea
 Call the `skill` tool four times, for `grilling`, `domain-model`, `architect` and `ux-design` (the first three are the set of `/grill-with-docs`, which can't be called from a skill). Grill the user until the frontier is empty and they confirm a shared understanding. The grilling carries the three perspectives the spec linter cannot check – product, engineering, UX. With an intake result, the ticket's claims and the intake's `signals` seed the frontier; unresolved comments and contradictions are the first questions. Typical branches:
+- **Research – does the idea rest on an external fact?** Auth/identity, security, payment, privacy/data protection, accessibility, performance, a new library or technology, or `--research`: load the `research` skill before grilling the affected branch. Check `docs/research/` first; a trigger is not a mandate, and one run covers a topic, not a story. Findings enter the round as cited recommendations – evidence, not decisions.
 - **Product**: Which problem, for which user group, and what value? Measurable outcome? Does it fit the vision, or touch a non-goal? If it changes scope → update `docs/product/vision.md` with the user. Must vs. could – what ships first?
 - **Engineering**: Which existing code, data and stories change? Is there a migration? What is hard to test? Where does it cut into stories – one command per story, at most 4 scenarios?
 - Which existing processes, events and stories does it change? What's explicitly out of scope?
@@ -103,10 +106,10 @@ Read `.claude/skills/event-storming/SKILL.md` and follow it with the feature as 
 - A UX decision changes or adds a guideline → delegate to `ux-designer`: write exactly these decisions into `docs/product/ux-guidelines.md`. A prototype verdict is a decision like any other; the branch pointer and the verdict go into the story through step 5. The audit of existing screens belongs to `/groom-backlog`, not to the feature.
 
 ## 5. Stories
-Write the stories yourself as the spec engineer (the `user-stories` skill is the method): derive one story per new or changed command, policy or read model; name `aggregate` and `command` (exactly one each), the event/command IDs, `ui: true` for every story with a frontend part, `type: chore`/`task` for non-domain work, the label `feature:<slug>`, the label `bug` for the bug path, the source reference (`Source: <ref> (<url>)`) for every story derived from a ticket, the UX decisions from step 2 (with the G-numbers of the guidelines they reference), the prototype verdict and branch pointer from step 2b, and existing stories that need revising. Do not merge two commands into one story; if the cut needs more than 4 scenarios, split it. Finished stories get `status: review` and are run through the spec linter.
+Write the stories yourself as the spec engineer (the `user-stories` skill is the method): derive one story per new or changed command, policy or read model; name `aggregate` and `command` (exactly one each), the event/command IDs, `ui: true` for every story with a frontend part, `type: chore`/`task` for non-domain work, the label `feature:<slug>`, the label `bug` for the bug path, the source reference (`Source: <ref> (<url>)`) for every story derived from a ticket, the research files they cite (`sources: [docs/research/<topic>.md]`) with adopted/rejected findings and their reasons in `## Context`, the UX decisions from step 2 (with the G-numbers of the guidelines they reference), the prototype verdict and branch pointer from step 2b, and existing stories that need revising. Do not merge two commands into one story; if the cut needs more than 4 scenarios, split it. Finished stories get `status: review` and are run through the spec linter.
 
 ## 6. Review
 Read `.claude/skills/review-stories/SKILL.md` and follow it with the story IDs from step 5 as the arguments (only this feature's stories, not everything in `review`). The spec linter must be green before a story reaches `ready-for-human-review`; the user approves every change and every `ready`. There is no separate review subagent.
 
 ## 7. Wrap-up
-Summarize: the source and the route taken (idea, ticket, existing story or bug), glossary changes, new/changed events, ADRs proposed, a prototype run and its verdict (if any), stories created and their review outcome (`ready` vs. still open), open hotspots/questions. Point to `docs/stories/BACKLOG.md`, where `ready` stories are queued for the engineering workflow. For a bug, say which documented rule was restored, or that the rule changed and became a feature.
+Summarize: the source and the route taken (idea, ticket, existing story or bug), glossary changes, new/changed events, ADRs proposed, research files created or refreshed and the findings the user adopted or rejected, a prototype run and its verdict (if any), stories created and their review outcome (`ready` vs. still open), open hotspots/questions. Point to `docs/stories/BACKLOG.md`, where `ready` stories are queued for the engineering workflow. For a bug, say which documented rule was restored, or that the rule changed and became a feature.

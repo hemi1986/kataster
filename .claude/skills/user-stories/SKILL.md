@@ -67,6 +67,7 @@ Template: `templates/story-template.md`. Schema: `schema/story.schema.json`.
 | `priority` (`must/should/could/wont`) | yes | backlog order; starts as `should` |
 | `aggregate` (`AGG-…`), `command` (`CMD-…`) | for `type: domain` | the 1-command rule, cross-checked against `events.yaml` |
 | `events` (`EVT-…`) | for `type: domain` | exactly the command's `produces` |
+| `sources` (`https://…`, `docs/research/<topic>.md`) | no | evidence behind a cross-cutting decision; required for `risk: high` and the configured gate labels before `ready-for-human-review` |
 | `context` (`BC-…`) | for `type: domain` | the bounded context |
 | `ui` (`true`) | no | story has a frontend part; triggers the on-demand UX utility |
 | `size`, `risk`, `depends_on` | no | optional planning hints; no sizing gate |
@@ -106,6 +107,21 @@ trigger for the on-demand `ux-designer`: component/layout proposals, Figma/desig
 utility never gates the story; a missing decision comes back as a proposal, not as a blocker.
 
 The old `labels: [ui]` is still recognised as equivalent. New stories set the flag.
+
+## Research as evidence
+
+Cross-cutting stories cite their evidence in `sources:`. An entry is an `https://…` URL or a local
+`docs/research/<topic>.md` file (optional `#anchor`). Research is **evidence, not a specification**: only a finding
+the user confirmed in grilling becomes a scenario, and it gets an observable threshold – a number, a named
+configuration value or a testable state, never "follow best practices". A rejected option is recorded with its
+reason in `## Context` / `## Out of Scope`; the research file stays evidence, not a decision log.
+
+A story with `risk: high` or one of the gate labels in `.claude/project.json` → `research.gate` (default
+`security`, `auth`, `payment`, `privacy`; a label matches exactly or by prefix, so `security:oauth` counts) needs at
+least one resolvable source. `lint-story` warns for a `draft`/`review` story without one; `story-status.ts` and the
+validation hook block the move to `ready-for-human-review` and `ready`. Existing `ready`/`done` stories stay green –
+the gate applies at the status change, never retroactively. Expiry is a warning, not a gate error: `verify.ts` runs
+`research-check.ts --referenced` as an advisory step.
 
 ## Status Workflow
 `draft` (in progress) → `review` (written, waiting for the linter) → `ready-for-human-review` (spec linter green) →

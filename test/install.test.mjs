@@ -51,6 +51,12 @@ test("installs the workflow into an existing repository", () => {
     ".claude/skills/prototype/SKILL.md",
     ".claude/skills/prototype/UI.md",
     ".claude/skills/prototype/LOGIC.md",
+    ".claude/skills/research/SKILL.md",
+    ".claude/skills/research/templates/research.md",
+    ".claude/skills/research/scripts/research-check.ts",
+    ".claude/agents/researcher.md",
+    ".opencode/agents/researcher.md",
+    ".opencode/commands/research.md",
     ".claude/skills/backlog/scripts/backlog-push.ts",
     ".claude/skills/backlog/scripts/jira-plan.ts",
     ".claude/lib/config.ts",
@@ -73,6 +79,7 @@ test("installs the workflow into an existing repository", () => {
     "docs/product/initiatives/README.md",
     "docs/prototypes/README.md",
     "docs/engineering/conventions.md",
+    "docs/research/README.md",
     "docs/stories/README.md",
   ]) {
     assert.ok(existsSync(join(dir, file)), `${file} missing`);
@@ -89,14 +96,19 @@ test("installs the workflow into an existing repository", () => {
   assert.deepEqual(profile.stack.databases, ["PostgreSQL"]);
   assert.equal(profile.commands.lint, "npm run lint");
   assert.equal(profile.backlog.provider, "local");
+  assert.equal(profile.research.expiryMonths, 12);
+  assert.deepEqual(profile.research.gate.risk, ["high"]);
+  assert.deepEqual(profile.research.gate.labels, ["security", "auth", "payment", "privacy"]);
 
   assert.match(read(dir, "CONTEXT.md"), /^# demo/m);
   assert.match(read(dir, "docs/domain/events.yaml"), /domain: demo/);
   assert.match(read(dir, "AGENTS.md"), /kataster:begin/);
+  assert.match(read(dir, "AGENTS.md"), /read-only `researcher`/);
 
   const settings = json(dir, ".claude/settings.json");
   assert.ok(settings.hooks.SessionStart[0].hooks[0].command.includes("session-start.ts"));
   assert.ok(settings.permissions.allow.some((a) => a.includes("validate-events.ts")));
+  assert.ok(settings.permissions.allow.includes("Bash(node .claude/skills/research/scripts/*)"));
 
   const manifest = json(dir, ".claude/install.json");
   assert.equal(manifest.tool, "kataster");
