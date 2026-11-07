@@ -24,7 +24,7 @@ is what to read when you are unsure where something belongs.
 | Visualization (generated!) | `docs/domain/event-storming.md` | hook – never edit manually |
 | Context map | `docs/domain/context-map.md` | `domain-architect` |
 | Logical data model | `docs/architecture/data-model.md` | `domain-architect` |
-| Repository map (generated!) | `docs/architecture/repo-map.json`, `docs/architecture/repo-map.md` | `repo-map.ts` – never edit manually |
+| Repository map (generated!) | `docs/architecture/repo-map.json`, `docs/architecture/repo-map.md` | `repo-map.ts` – packages, roles, concept slices; never edit manually |
 | Package docs (loaded on demand) | `<package>/AGENTS.md` + `<package>/CLAUDE.md` | `/adopt`, user confirms the prose |
 | Path-scoped rules | `.claude/rules/*.md` (both harnesses) | `/adopt`, user approves |
 | Architecture boundaries | `docs/architecture/boundaries.yaml` | user confirms; checked by `boundary-check.ts` |
@@ -45,10 +45,12 @@ is what to read when you are unsure where something belongs.
 | Command | Covers |
 |---|---|
 | `/bootstrap` | greenfield: vision → event storming → model → architecture → UX → stories |
-| `/adopt [scope] [--stories]` | brownfield: repo map → one slice (domain + shared library) → evidence → domain draft → package docs → grilling → gap register; stories only with `--stories`; repeat per slice |
+| `/adopt [scope] [--stories]` | brownfield: repo map → one concept or package slice (+ shared library) → evidence → domain draft → context docs → grilling → gap register; scope may be a package path, `--paths`, `--route`, `--table`, `--event`, `--cluster` or a term; stories only with `--stories` |
 | `/shape <idea \| ticket>` | before a large feature: frame, place (existing/new context, shared library), impact, slices, rough cost range, recommendation; creates no stories; `--dry-run` writes nothing |
 | `boundary-check.ts` | architecture boundaries: `--init`, `--update-baseline`, `--changed`, `--json` |
 | `affected.ts` | monorepo fast loop: changed files or `--base` → affected packages + native test command |
+| `slice.ts` | concept scope (`--paths`/`--route`/`--table`/`--event`/`--cluster`/`--term`) → candidate files across layers |
+| `slice-doc.ts` | cross-cutting concept slice → `.claude/rules/<context>.md` with `paths:` frontmatter |
 | `grilling` (`/grill-me`) | relentless interview in rounds with recommended answers – how we ask questions |
 | `/grill-with-docs` | grilling + `domain-model` + `architect`: writes glossary and ADRs as it goes |
 | `/event-storming [process]`, `/feature <idea \| ST-NNN \| ticket>` | discovery entry points; both start by grilling. `/feature` resolves a story or ticket read-only and routes bugs to a regression story; `--prototype` adds a throwaway prototype before the stories |
@@ -104,13 +106,17 @@ is what to read when you are unsure where something belongs.
   reopened – changes become a new story.
 - **Never weaken or delete a test to get green.** One branch and one pull request per story; the user merges.
 - **Subagents don't know the conversation**: when delegating, pass file paths and a clear task.
-- **Adopt in slices.** One domain plus at most one shared library per session; never the whole monorepo. The
-  ranking in `docs/architecture/repo-map.md` suggests where to start.
+- **Adopt in slices, by concept.** One concept or domain plus at most one shared library per session; never the
+  whole monorepo. In a layered repository a domain runs through `api/`, `services/` and `repositories/` – a
+  generic `services`/`utils` package is a layer, not a domain. The ranking and the concept clusters in
+  `docs/architecture/repo-map.md` suggest where to start; `slice.ts` resolves the candidate files.
 - **The root `AGENTS.md` has no domain.** Structure, commands, hard conventions and links. Domain language lives
   in `CONTEXT.md`, package reality in `<package>/AGENTS.md` – loaded only when someone works there.
 - **Directory docs before glob rules.** Rules that apply to a directory belong in its `AGENTS.md`; `.claude/rules/`
-  with `paths:` is for patterns a directory cannot express. Claude Code scopes it natively, OpenCode's plugin
-  attaches it when a matching file is read or written – one file, both harnesses.
+  with `paths:` is for patterns a directory cannot express. A cross-cutting concept slice documents its domain in
+  `.claude/rules/<context>.md` with the slice's globs; a real domain package keeps `<package>/AGENTS.md`. Never
+  duplicate the same content in both. Claude Code scopes rules natively, OpenCode's plugin attaches them when a
+  matching file is read or written – one file, both harnesses.
 - **Checks are green on day one.** Brownfield checks start report-only with a baseline and only new violations
   fail; a red hook gets switched off. `docs/engineering/checks.yaml` decides what runs at edit time and at
   Stop/CI; the `project-check.ts` dispatcher is wired once and never per package.

@@ -9,6 +9,9 @@ npx kataster init --brownfield
 /adopt                      # map the repository, then choose a slice
 /adopt apps/billing         # adopt one package
 /adopt libs/shared-kernel   # adopt a shared library
+/adopt --cluster order      # adopt a concept across api/, services/, repositories/
+/adopt --table orders       # start from a table and resolve the layers behind it
+/adopt --route "POST /orders"  # start from an entry point
 ```
 
 ## Adopt in slices, not in one pass
@@ -20,14 +23,20 @@ A monorepo with eighty packages cannot be understood in one session. `/adopt` th
 2. **One slice** – one domain plus at most one shared library. Deep evidence, grilling, package docs, checks.
    Then the next slice in a later session.
 
-The map is generated from manifests and git history:
+The map is generated from manifests, source files and git history:
 
-- `docs/architecture/repo-map.json` – packages, paths, kinds, internal dependencies, consumers, adoption ranking
+- `docs/architecture/repo-map.json` – packages, paths, kinds, roles, internal dependencies, consumers, adoption
+  ranking, concept-slice suggestions
 - `docs/architecture/repo-map.md` – the same as a readable map, plus dependency edges and a suggested first slice
 - the **repository block in `AGENTS.md`** – tooling, layout, commands, adopted slices
 - `.claude/project.json` → `repo.tooling` – Nx, Turborepo, Bazel, pnpm/npm/yarn workspaces, Go, Cargo, Gradle, Maven
 
 The map is facts, not domain. It says where code lives, never what a word means.
+
+In a layered repository (`api/`, `services/`, `repositories/`, `utils/`) a package is not a domain. The map marks
+generic packages as **layer packages** and clusters files by shared concept stems and tables. A domain such as
+“order” shows up as an `order` slice across all layers; `slice.ts` resolves the candidate files from a cluster, a
+table, a route, an event ID, a glob or a term. The resolver is evidence – you confirm the scope.
 
 ## What `/adopt` does
 
@@ -56,6 +65,9 @@ A monorepo gets three lenses:
 A small repository without monorepo tooling gets the five classic lenses: structure and stack, domain language,
 data and integrations, behaviour and tests, history and decisions.
 
+For a concept slice, the analysts receive the confirmed file list from `slice.ts`, not only a package path. They
+report facts inside that scope; widening the slice is the user's decision, not theirs.
+
 Each analyst returns facts with `path:line`, candidate vocabulary, candidate events/commands/read models,
 contradictions, and questions with a recommended answer. Confidence is `high`, `medium` or `low`.
 
@@ -68,8 +80,9 @@ contradictions, and questions with a recommended answer. Confidence is `high`, `
 - `docs/domain/context-map.md`, `docs/architecture/data-model.md` (as-is)
 - `docs/engineering/conventions.md` – how the code actually works today, including the monorepo tooling
 - `docs/adr/` – de-facto decisions worth recording (`status: proposed`)
-- **package docs** – `<package>/AGENTS.md` plus `<package>/CLAUDE.md`, written by
-  `node .claude/skills/adopt/scripts/package-doc.ts <path>`
+- **domain docs, by scope** – a real domain package gets `<package>/AGENTS.md` plus `<package>/CLAUDE.md` from
+  `package-doc.ts <path>`; a cross-cutting concept slice gets `.claude/rules/<context>.md` with `paths:` from
+  `slice-doc.ts <slug> --context BC-… --paths "…"`. One mechanism per scope, never both.
 
 Everything uncertain is marked. The draft is a proposal, not a verdict.
 

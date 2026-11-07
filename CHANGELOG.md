@@ -10,6 +10,12 @@
 - **Gap register.** `docs/domain/gap-register.md` gets one generated row per `as-is`/`unresolved` aggregate,
   linking the aggregate and both context maps. The managed block is refreshed by
   `node .claude/skills/adopt/scripts/gap-register.ts`; decisions live outside it.
+- **Slices by concept, not by package.** The repository map marks generic layer packages (`services`,
+  `repositories`, `utils`) instead of proposing them as domains, and clusters files by shared concept stems and
+  tables. `/adopt` accepts a package path, `--paths`, `--route`, `--table`, `--event`, `--cluster` or a term;
+  `slice.ts` resolves the candidate files across layers and the user confirms the scope. A cross-cutting slice
+  documents its domain in `.claude/rules/<context>.md` with `paths:`; `<package>/AGENTS.md` stays for real
+  domain packages.
 
 ## 0.4.0 – 2026-11-03
 

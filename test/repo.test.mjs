@@ -225,6 +225,77 @@ test("upgrade keeps the repo map, package docs and project hooks", () => {
   assert.ok(!("docs/architecture/repo-map.json" in manifest.files), "the map is project content");
 });
 
+test("marks layer packages and proposes concept slices across layers", () => {
+  const dir = repo({
+    "package.json": JSON.stringify({
+      name: "acme",
+      private: true,
+      workspaces: ["apps/*", "services/*", "repositories/*", "libs/*"],
+    }),
+    "apps/api/package.json": JSON.stringify({ name: "@acme/api", scripts: { test: "vitest" } }),
+    "apps/api/src/ordersController.ts": "export const orders = 1;\n",
+    "services/package.json": JSON.stringify({ name: "@acme/services", scripts: { test: "vitest" } }),
+    "services/orderService.ts": "export const order = 1;\n",
+    "services/customerService.ts": "export const customer = 1;\n",
+    "services/invoiceService.ts": "export const invoice = 1;\n",
+    "repositories/package.json": JSON.stringify({ name: "@acme/repositories", scripts: { test: "vitest" } }),
+    "repositories/orderRepository.ts": 'export const table = "orders";\n',
+    "repositories/customerRepository.ts": "export const customer = 1;\n",
+    "repositories/invoiceRepository.ts": "export const invoice = 1;\n",
+    "libs/utils/package.json": JSON.stringify({ name: "@acme/utils", scripts: { test: "vitest" } }),
+    "libs/utils/date.ts": "export const date = 1;\n",
+    "libs/utils/string.ts": "export const string = 1;\n",
+    "db/migrations/001_orders.sql": "create table orders (id int);\n",
+  });
+  init(dir);
+  assert.equal(script(dir, "repo-map.ts").code, 0);
+
+  const map = json(dir, "docs/architecture/repo-map.json");
+  const services = map.packages.find((p) => p.path === "services");
+  assert.equal(services.role, "layer");
+  assert.ok(services.roleReasons.some((reason) => /concept stems/.test(reason)));
+  assert.equal(map.packages.find((p) => p.path === "repositories").role, "layer");
+  assert.equal(map.packages.find((p) => p.path === "libs/utils").role, "shared");
+  assert.equal(map.packages.find((p) => p.path === "apps/api").role, "domain");
+
+  assert.ok(map.ranking.find((r) => r.path === "services").reasons.some((reason) => /not a domain slice/.test(reason)));
+  assert.ok(map.slices.some((slice) => slice.name === "order" && slice.layers.includes("services") && slice.layers.includes("api")));
+
+  const markdown = read(dir, "docs/architecture/repo-map.md");
+  assert.match(markdown, /## Layer packages/);
+  assert.match(markdown, /## Slice suggestions \(shared concepts\)/);
+  assert.match(markdown, /order/);
+});
+
+test("adopts a concept slice and keeps it across a map refresh", () => {
+  const dir = repo({
+    "package.json": JSON.stringify({ name: "shop", scripts: { test: "vitest" } }),
+    "src/api/ordersController.ts": "export const orders = 1;\n",
+    "src/services/orderService.ts": "export const order = 1;\n",
+    "src/repositories/orderRepository.ts": 'export const table = "orders";\n',
+    "db/migrations/001_orders.sql": "create table orders (id int);\n",
+  });
+  init(dir);
+  assert.equal(script(dir, "repo-map.ts").code, 0);
+
+  const map = json(dir, "docs/architecture/repo-map.json");
+  const order = map.slices.find((slice) => slice.name === "order");
+  assert.ok(order, "the concept cluster exists");
+  assert.ok(order.layers.includes("api"));
+  assert.ok(order.layers.includes("services"));
+  assert.ok(order.layers.includes("repositories"));
+  assert.ok(order.tables.includes("orders"));
+
+  const adopted = script(dir, "repo-map.ts", "--adopt-slice", "order");
+  assert.equal(adopted.code, 0, adopted.out);
+  assert.match(adopted.out, /Adopted concept slice: order/);
+  assert.match(read(dir, "AGENTS.md"), /concept `order`/);
+
+  assert.equal(script(dir, "repo-map.ts").code, 0);
+  const refreshed = json(dir, "docs/architecture/repo-map.json");
+  assert.equal(refreshed.slices.find((slice) => slice.name === "order").adopted, true);
+});
+
 test("detects Bazel and uses it for package commands", () => {
   const dir = repo({
     "MODULE.bazel": 'module(name = "acme")\n',

@@ -9,7 +9,7 @@
  * The map is generated from manifests and git history. It is not a domain model: it says where code lives,
  * how packages depend on each other and which slice to adopt first. Domain meaning comes from the grilling.
  */
-import { ROOT, findPackage, markAdopted, packageCounts, proposeSlices, readRepoMap, scanRepo, stableMap, updateProjectTooling, writeRepoMap, writeRootBlock } from "../../../lib/repo.ts";
+import { ROOT, findPackage, markAdopted, markSliceAdopted, packageCounts, proposeSlices, readRepoMap, scanRepo, stableMap, updateProjectTooling, writeRepoMap, writeRootBlock } from "../../../lib/repo.ts";
 import { graphLabel, graphToolLabel } from "../../../lib/toolgraph.ts";
 
 const args = process.argv.slice(2);
@@ -24,6 +24,7 @@ function usage(): void {
       "  --json          print the map as JSON without writing",
       "  --check         exit 1 when the checked-in map no longer matches the repository",
       "  --adopt <path>  mark a package as adopted (after the grilling)",
+      "  --adopt-slice <name>  mark a concept slice as adopted",
       "  --no-tool-graph skip the build-tool graph query (Turbo/Nx/Bazel); manifest graph only",
     ].join("\n"),
   );
@@ -53,6 +54,24 @@ if (adoptIndex !== -1) {
   process.exit(0);
 }
 
+const adoptSliceIndex = args.indexOf("--adopt-slice");
+if (adoptSliceIndex !== -1) {
+  const name = args[adoptSliceIndex + 1];
+  if (!name) {
+    console.error("--adopt-slice needs a concept name, e.g. order");
+    process.exit(1);
+  }
+  try {
+    markSliceAdopted(root, name);
+    console.log(`Adopted concept slice: ${name}`);
+    console.log("The root AGENTS.md block now lists it as adopted.");
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
 const map = scanRepo(root, {
   // --check stays fast and environment-independent; the graph is enrichment, not part of the stable map.
   toolGraph: !args.includes("--check") && !args.includes("--no-tool-graph"),
@@ -65,6 +84,13 @@ if (previous) {
     if (old?.adopted) {
       pkg.adopted = true;
       pkg.adoptedAt = old.adoptedAt;
+    }
+  }
+  for (const slice of map.slices ?? []) {
+    const old = previous.slices?.find((entry) => entry.name === slice.name);
+    if (old?.adopted) {
+      slice.adopted = true;
+      slice.adoptedAt = old.adoptedAt;
     }
   }
 }
@@ -114,10 +140,16 @@ console.log(`Packages: ${map.packages.length} (${packageCounts(map)})`);
 if (profileUpdated) console.log("Updated .claude/project.json → repo.tooling");
 if (agentsUpdated) console.log("Updated the generated repository block in AGENTS.md");
 
+if (proposal.cluster) {
+  console.log("");
+  console.log(`Suggested concept slice: ${proposal.cluster.name} (${proposal.cluster.layers.join(", ") || "one layer"})`);
+  console.log(`  Start with: node .claude/skills/adopt/scripts/slice.ts --cluster ${proposal.cluster.name}`);
+  console.log(`  Mark it adopted after the grilling: node .claude/skills/adopt/scripts/repo-map.ts --adopt-slice ${proposal.cluster.name}`);
+}
 if (proposal.domain) {
   console.log("");
   const label = proposal.domain.path === "." ? "root package" : proposal.domain.path;
-  console.log(`Suggested first slice: ${label} (${proposal.domain.name})`);
+  console.log(`Suggested package slice: ${label} (${proposal.domain.name})`);
   if (proposal.library) console.log(`  with shared library: ${proposal.library.path} (${proposal.library.name})`);
   console.log(`Mark it adopted after the grilling: node .claude/skills/adopt/scripts/repo-map.ts --adopt ${proposal.domain.path}`);
 }
