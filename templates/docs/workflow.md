@@ -51,6 +51,7 @@ is what to read when you are unsure where something belongs.
 | `affected.ts` | monorepo fast loop: changed files or `--base` → affected packages + native test command |
 | `slice.ts` | concept scope (`--paths`/`--route`/`--table`/`--event`/`--cluster`/`--term`) → candidate files across layers |
 | `slice-doc.ts` | cross-cutting concept slice → `.claude/rules/<context>.md` with `paths:` frontmatter |
+| `characterize.ts` | affected story/paths → existing tests and files with no test; the input for characterization tests |
 | `grilling` (`/grill-me`) | relentless interview in rounds with recommended answers – how we ask questions |
 | `/grill-with-docs` | grilling + `domain-model` + `architect`: writes glossary and ADRs as it goes |
 | `/event-storming [process]`, `/feature <idea \| ST-NNN \| ticket>` | discovery entry points; both start by grilling. `/feature` resolves a story or ticket read-only and routes bugs to a regression story; `--prototype` adds a throwaway prototype before the stories |
@@ -93,6 +94,11 @@ is what to read when you are unsure where something belongs.
   takes the fast lane automatically (or with `--fast`): branch → implement → lint/typecheck/tests → pull request, no
   Gherkin matching and no formal review pass. `type: tech-task` keeps its checklist and acceptance; `type: spike` is
   a timeboxed question.
+- **Characterization before test-first.** In a domain story, an affected path with no test for the behaviour that
+  is about to change gets a characterization test first: pin the current behaviour, run it green, commit it
+  separately (`ST-NNN: characterize <area>`), then start the story tests. If the current behaviour contradicts the
+  story, the story goes back to `review` – the test is not adapted to the story. The fast lane skips this except
+  for an explicit refactoring.
 - **The spec linter is the gate.** `node .claude/skills/user-stories/scripts/lint-story.ts <file>` (or
   `kataster lint-story`) checks frontmatter, required fields, aggregate/command/event references, Gherkin and the
   scenario limit – deterministically, without an LLM. Green → `ready-for-human-review`; the user approves `ready`.
@@ -146,11 +152,16 @@ question cannot be settled on paper, `/feature --prototype` adds a throwaway pro
 stories; the verdict goes into the story and the UX guidelines.
 
 Engineering, story by story: `/implement [ST-NNN]` (empty = next ready story whose dependencies are done). Domain
-lane: prepare → test plan → red/green per scenario → `verify.ts` → review lane scaled to the diff → refactor →
-acceptance tester's verdict → `done` + pull request. Fast lane (`chore`/`task`, or `--fast`): prepare → implement →
-lint/typecheck/tests → `verify.ts` → pull request. **The user only merges.** `--prototype` settles an open UI
-question first; if it changes the story, the story goes back to `review`, through the linter and the user again.
-Start the next story in a fresh session.
+lane: prepare → test plan → **characterization net for untested existing behaviour** → red/green per scenario →
+`verify.ts` → review lane scaled to the diff → refactor → acceptance tester's verdict → `done` + pull request.
+Fast lane (`chore`/`task`, or `--fast`): prepare → implement → lint/typecheck/tests → `verify.ts` → pull request.
+**The user only merges.** `--prototype` settles an open UI question first; if it changes the story, the story goes
+back to `review`, through the linter and the user again. Start the next story in a fresh session.
+
+In a brownfield domain story, `characterize.ts` names the affected paths with no test. Characterization tests pin
+the current behaviour and are committed separately (`ST-NNN: characterize <area>`) **before** the story's red →
+green loop. If the current behaviour contradicts the story, that is a finding: the story goes back to `review` and
+the code is not silently adjusted. The fast lane skips this except for an explicit refactoring.
 
 With a tracker: pull before `/review-stories`, `/groom-backlog` and `/implement`; push after changing or approving
 stories and after `done`. The tracker leads on conflict; `docs/stories/` is the mirror and `BACKLOG.md` stays

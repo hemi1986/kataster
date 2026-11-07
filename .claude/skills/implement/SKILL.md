@@ -86,6 +86,38 @@ Seams from the catalog are the "confirmed seams" the tdd skill requires; the use
 cover them; the story's checklist is the acceptance. If it already has scenarios, keep them as a sanity check but do
 not create `ST-NNN:` test titles.
 
+## 2a. Characterization net (domain lane, existing behaviour)
+
+Before the first red test, find out whether the affected paths already have a net:
+
+```bash
+node .claude/skills/implement/scripts/characterize.ts --story ST-NNN
+# or name the paths directly
+node .claude/skills/implement/scripts/characterize.ts --changed <file>
+```
+
+The check names the affected source files, the tests it found and the files with **no test found**. It is a
+test-presence check, not a coverage tool: whether a test covers the behaviour that is about to change is your
+judgement.
+
+For every affected path whose behaviour is about to change and has no test:
+
+1. Write a **characterization test** that pins the current behaviour (Feathers): assert what the code does today,
+   not what the story wants it to do.
+2. Run it on the unchanged code and see it green. A red characterization test is not the story's red step.
+3. Commit it separately: `ST-NNN: characterize <area>`.
+4. Only then start the story's red → green loop (step 3).
+
+If the current behaviour contradicts the story, that is a **finding**, not a test to adjust: mark the story `[OPEN]`,
+add a row to `docs/stories/OPEN_QUESTIONS.md`, and send it back with
+`node .claude/skills/implement/scripts/story-status.ts ST-NNN review`. Do not silently make the code fit the story.
+
+If the repository has no test runner, stop and report it: setting one up is its own `task` story, not a side effect
+of this one.
+
+**Fast lane:** skip this step. The exception is a refactoring – when the task says behaviour stays unchanged (or the
+story carries the label `refactor`), write the characterization net first; a refactor without one is a rewrite.
+
 ## 3. Red → green (domain) / implement (fast)
 
 **Domain lane:**
@@ -212,7 +244,8 @@ A spike answers its **Question** within its **Timebox** – no test plan, no TDD
 
 ## When the story is wrong
 Never guess. When a scenario contradicts another story, a rule or an ADR, can't be tested as written, or leaves a
-decision open:
+decision open – and when a characterization test shows that the current behaviour differs from what the story
+assumes:
 1. Stop implementing that part. Mark it `[OPEN]` in the story and add a row to `docs/stories/OPEN_QUESTIONS.md`.
 2. `node .claude/skills/implement/scripts/story-status.ts ST-NNN review` and tell the user. The fix goes through
    discovery in the main session: revise the story, run the spec linter, and let the user approve it again

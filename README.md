@@ -154,6 +154,12 @@ Non-domain work takes the **fast lane**: `type: chore` (UI tweak, refactor, depe
 Gherkin matching or formal review agents. `type: tech-task` keeps its checklist and acceptance; `type: spike` is a
 timeboxed question.
 
+In a brownfield domain story, `/implement` first runs `characterize.ts`: it names the affected source files and
+the tests it can find. An affected path with no test for the behaviour that is about to change gets a
+**characterization test** that pins the current behaviour, committed separately before the story's red → green
+loop. If the current behaviour contradicts the story, that is a finding and the story goes back to `review`; the
+code is never silently adjusted. The fast lane skips this except for an explicit refactoring.
+
 ### Starting from a ticket
 
 `/feature` also accepts a reference: `/feature #123` (GitHub), `/feature PROJ-123` (Jira, with the issue fetched

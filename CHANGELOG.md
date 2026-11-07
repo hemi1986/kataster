@@ -16,6 +16,11 @@
   `slice.ts` resolves the candidate files across layers and the user confirms the scope. A cross-cutting slice
   documents its domain in `.claude/rules/<context>.md` with `paths:`; `<package>/AGENTS.md` stays for real
   domain packages.
+- **Characterization tests before test-first.** `characterize.ts --story ST-NNN` (or `--changed`/`--base`) names
+  the affected source files and the tests it finds. In the domain lane, an affected path with no test for the
+  behaviour about to change gets a characterization test first: current behaviour pinned, green on unchanged code,
+  committed separately, then the story tests. A discrepancy is a finding – the story goes back to `review`, never
+  the test to the expected value. The fast lane skips this except for an explicit refactoring.
 
 ## 0.4.0 – 2026-11-03
 

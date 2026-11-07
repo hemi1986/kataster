@@ -107,6 +107,11 @@ baseline of existing violations; only new violations fail. A hook that is red on
 `/adopt` may add characterization tests and tooling. It never changes production code, and it never writes a test
 that fails on existing behaviour – that would be a story.
 
+The same net carries into `/implement`: `characterize.ts --story ST-NNN` names the affected source files and the
+tests it can find. A path with no test for the behaviour that is about to change gets a characterization test
+first – current behaviour pinned, green on unchanged code, committed separately, then the story's red → green loop.
+If the current behaviour contradicts the story, the story goes back to `review`; the test is not bent to fit.
+
 ### 7. Records the gap – stories only on request
 
 | Class | Default |
