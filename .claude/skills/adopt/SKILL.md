@@ -89,7 +89,10 @@ Merge the reports into one picture. Write the artifacts **as a draft**, every un
 - **`CONTEXT.md`** – only the slice's terms, grouped by guessed bounded context, competing spellings under
   `_Avoid_`, `[OPEN]` where the meaning is unclear. Do not touch terms of other slices.
 - **`docs/domain/events.yaml`** – 10–25 candidate events/commands/actors/read models/policies/flows for this
-  slice. Every uncertainty becomes a hotspot (`HS-n`, `status: open`).
+  slice. Every uncertainty becomes a hotspot (`HS-n`, `status: open`). Every aggregate carries a status:
+  `as-is` with `evidence` (table, service method, path) when the code shows a factual consistency boundary, or
+  `unresolved` plus an open hotspot when the boundary is unclear. **Never `target` for a boundary inferred from
+  code** – a target is a decision the user makes, not a reading of the repository.
 - **`docs/domain/context-map.md`** – the boundaries the module structure suggests, marked as a proposal.
 - **`docs/architecture/data-model.md`** – the **as-is** model for the slice, derived from schema and code.
 - **`docs/engineering/conventions.md`** – fill what the slice actually does: module layout, how a command runs,
@@ -138,7 +141,9 @@ skill says: numbered questions, each with a recommended answer, whole frontier p
 Questions brownfield needs, roughly in this order:
 
 1. **Terms** – one question per cluster of competing spellings, worst first.
-2. **Boundaries** – which package owns which state; where a shared library ends and a domain begins.
+2. **Boundaries** – which package owns which state; where a shared library ends and a domain begins. For every
+   aggregate: is this the factual consistency boundary (`as-is`), is it unclear (`unresolved` + hotspot), or is
+   this the boundary we want (`target`, a decision)? Prefer `as-is`/`unresolved` over an invented aggregate.
 3. **Lifecycle** – states the schema allows, transitions it does not block.
 4. **Invariants** – what the code checks only in the UI; what must always hold.
 5. **Missing behaviour** – what has no trace: never needed, or a gap?
@@ -209,6 +214,15 @@ backlog. Write the table into `docs/domain/adoption-report.md`; open questions g
 `docs/stories/OPEN_QUESTIONS.md` or a hotspot. This keeps the model reviewable without committing to work the
 user has not prioritised.
 
+Run the gap register after the grilling and before the report:
+
+```bash
+node .claude/skills/adopt/scripts/gap-register.ts
+```
+
+Every `as-is` aggregate gets a generated row with its evidence and its as-is/target context links; every
+`unresolved` aggregate gets a row that names its open hotspot. Add the decisions outside the managed block.
+
 Only when the invocation contains `--stories`, or the user explicitly asks after seeing the table:
 
 - write the stories yourself as the spec engineer (the `user-stories` skill is the method) with the **selected**
@@ -270,6 +284,8 @@ checks created, gap candidates (and stories only if requested), ADRs proposed. T
 
 - **Never change production code in `/adopt`.** Tests and tooling are allowed only as the safety net above.
 - **Never present an inference as a fact.** Confidence and evidence, or a hotspot.
+- **Aggregates are honest.** `as-is` needs evidence; `unresolved` needs an open hotspot; `target` is a user
+  decision. An invented aggregate is worse than an unresolved one – it makes the story look ready when it is not.
 - **The user owns the language.** You may propose a better word; you may not rename the domain on your own.
 - **Adopt in slices.** One domain plus at most one shared library. Never the whole monorepo in one pass.
 - **The root `AGENTS.md` stays free of domain.** Structure, commands, hard conventions and links only.

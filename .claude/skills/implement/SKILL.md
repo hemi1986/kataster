@@ -41,7 +41,8 @@ Read it instead of assuming `main`, `npm` or GitHub.
    `external` key – an unlinked story never reaches `ready`, so stop and report instead of implementing a stale mirror.
 3. `node .claude/skills/implement/scripts/story-context.ts ST-NNN` – the context pack: story, exact test titles,
    dependencies, events/commands/rules/invariants, glossary, data model, ADRs. Read it completely; it is your
-   source, not memory.
+   source, not memory. If an aggregate in the pack has `status: unresolved`, stop: the consistency boundary is not
+   settled, so the story goes back to `review` instead of being decided in code.
 4. `git switch -c st-NNN-<slug>` (slug from the file name), then
    `node .claude/skills/implement/scripts/story-status.ts ST-NNN in-progress` and commit `ST-NNN: start`.
 5. **Pick the lane** and say it in one line: fast lane for `chore`/`task`, domain lane otherwise. The fast lane is

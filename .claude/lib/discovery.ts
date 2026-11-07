@@ -72,6 +72,21 @@ export const FAST_TYPES = new Set(["chore", "task"]);
 export const LEGACY_TYPES: Record<string, string> = { story: "domain" };
 const PRIORITIES = ["must", "should", "could", "wont"];
 
+/**
+ * Aggregate status.
+ *
+ *   target     – the boundary the project wants (the default; a missing field means target)
+ *   as-is      – the factual consistency boundary recovered from code, with evidence
+ *   unresolved – the boundary is unclear; it needs an open hotspot and grilling, and no story on it can be ready
+ */
+export const AGGREGATE_STATUSES = ["target", "as-is", "unresolved"] as const;
+export type AggregateStatus = (typeof AGGREGATE_STATUSES)[number];
+
+export function aggregateStatus(aggregate: Obj | undefined): AggregateStatus {
+  const value = aggregate?.status;
+  return value === "as-is" || value === "unresolved" ? value : "target";
+}
+
 // --------------------------------------------------------------------------
 // Report
 // --------------------------------------------------------------------------
@@ -305,6 +320,25 @@ export function validateEvents(report: Report): Obj | null {
   for (const h of items(m, "hotspots")) ref(h.id, "refs", h.refs, allButFlow);
   for (const f of items(m, "flows")) ref(f.id, "sequence", f.sequence, allButFlow);
 
+  // Aggregate status: as-is is a factual boundary and needs evidence; unresolved needs an open question.
+  const openHotspotRefs = new Set(
+    items(m, "hotspots")
+      .filter((h) => (h.status ?? "open") === "open")
+      .flatMap((h) => list(h.refs)),
+  );
+  for (const a of items(m, "aggregates")) {
+    const status = aggregateStatus(a);
+    if (status === "as-is" && !list(a.evidence).length) {
+      report.error(
+        where,
+        `${a.id}: status 'as-is' needs evidence – name the table, service method or path that marks the consistency boundary`,
+      );
+    }
+    if (status === "unresolved" && !openHotspotRefs.has(a.id)) {
+      report.warn(where, `${a.id}: status 'unresolved' without an open hotspot – add HS-… with refs: [${a.id}]`);
+    }
+  }
+
   // Heuristic warnings (non-blocking)
   const produced = new Set(items(m, "commands").flatMap((c) => list(c.produces)));
   const policyCmds = new Set(items(m, "policies").flatMap((p) => list(p.then)));
@@ -428,6 +462,17 @@ export function renderEventStorming(model: Obj): string {
       const aggs = it("aggregates").filter((a) => a.context === bc.id).map((a) => a.name);
       const evts = it("events").filter((e) => ctxOf(e.id) === bc.id).map((e) => e.name);
       out.push(`| ${bc.name} (\`${bc.id}\`) | ${bc.purpose ?? ""} | ${aggs.join(", ") || "–"} | ${evts.join(", ") || "–"} |`);
+    }
+    out.push("");
+  }
+
+  // Aggregate status: target, as-is (factual, with evidence) or unresolved (needs grilling).
+  if (it("aggregates").length) {
+    out.push("## Aggregates", "", "| Aggregate | Context | Status | Evidence |", "|---|---|---|---|");
+    for (const a of it("aggregates")) {
+      const context = a.context ? idx.get(a.context)?.name ?? a.context : "–";
+      const evidence = list(a.evidence).map((e) => String(e).replaceAll("|", "\\|")).join("<br>") || "–";
+      out.push(`| ${a.name} (\`${a.id}\`) | ${context} | ${aggregateStatus(a)} | ${evidence} |`);
     }
     out.push("");
   }
@@ -728,6 +773,14 @@ export function validateStories(report: Report, only: string | null = null, leni
             );
           }
         }
+      }
+      const aggregate = typeof m.aggregate === "string" ? idx.get(m.aggregate) : undefined;
+      if (aggregate && aggregateStatus(aggregate) === "unresolved") {
+        const msg =
+          `aggregate '${m.aggregate}' is unresolved – the consistency boundary is not settled; ` +
+          "resolve its hotspot in grilling before the story can be ready";
+        if (COMMITTED.has(status)) r.error(where, msg);
+        else r.warn(where, msg);
       }
     } else if (isDomain(m)) {
       // Without a readable model the required fields are checked above; the cross-check cannot run.

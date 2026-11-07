@@ -34,6 +34,8 @@ function node(dir, script, args = []) {
 
 const lint = (dir, args = []) => node(dir, "user-stories/scripts/lint-story.ts", args);
 const status = (dir, id, to) => node(dir, "implement/scripts/story-status.ts", [id, to]);
+const validateEvents = (dir) => node(dir, "event-storming/scripts/validate-events.ts");
+const renderEvents = (dir) => node(dir, "event-storming/scripts/render-event-storming.ts");
 
 const events = `version: 1
 domain: demo
@@ -72,6 +74,15 @@ commands:
     aggregate: AGG-Invoice
     produces: [EVT-InvoiceIssued]
 `;
+
+function eventsWithAggregateStatus(status, evidence = false) {
+  return events.replace(
+    "  - id: AGG-Order\n    name: Order\n    context: BC-Order\n",
+    "  - id: AGG-Order\n    name: Order\n    context: BC-Order\n" +
+      `    status: ${status}\n` +
+      (evidence ? "    evidence:\n      - orders table (db/schema.sql:12)\n" : ""),
+  );
+}
 
 const scenarios = (n) =>
   Array.from({ length: n }, (_, i) => `Scenario: Case ${i + 1}\n  Given a cart\n  When the order is placed\n  Then it is recorded\n`).join("\n");
@@ -213,6 +224,76 @@ test("kataster lint-story delegates to the installed linter", () => {
   const bad = spawnSync(process.execPath, [cli, "lint-story", "ST-001"], { cwd: dir, encoding: "utf8" });
   assert.equal(bad.status, 1);
   assert.match(`${bad.stdout}${bad.stderr}`, /at most 4/);
+});
+
+test("a missing aggregate status means target and keeps existing projects green", () => {
+  const dir = setup(story(scenarios(2)));
+  assert.equal(validateEvents(dir).code, 0);
+  const rendered = renderEvents(dir);
+  assert.equal(rendered.code, 0, rendered.out);
+  assert.match(readFileSync(join(dir, "docs/domain/event-storming.md"), "utf8"), /\| target \|/);
+});
+
+test("as-is aggregates are accepted when they carry evidence", () => {
+  const dir = setup(story(scenarios(2)));
+  write(dir, "docs/domain/events.yaml", eventsWithAggregateStatus("as-is", true));
+  const validated = validateEvents(dir);
+  assert.equal(validated.code, 0, validated.out);
+  const result = lint(dir, ["ST-001"]);
+  assert.equal(result.code, 0, result.out);
+  assert.match(result.out, /Spec linter OK/);
+});
+
+test("as-is aggregates without evidence fail validation", () => {
+  const dir = setup(story(scenarios(2)));
+  write(dir, "docs/domain/events.yaml", eventsWithAggregateStatus("as-is"));
+  const validated = validateEvents(dir);
+  assert.equal(validated.code, 1);
+  assert.match(validated.out, /status 'as-is' needs evidence/);
+  assert.match(validated.out, /AGG-Order/);
+});
+
+test("an unknown aggregate status is a schema error", () => {
+  const dir = setup(story(scenarios(2)));
+  write(dir, "docs/domain/events.yaml", eventsWithAggregateStatus("half-done", true));
+  const validated = validateEvents(dir);
+  assert.equal(validated.code, 1);
+  assert.match(validated.out, /not allowed/);
+});
+
+test("an unresolved aggregate cannot leave review", () => {
+  const dir = setup(story(scenarios(2)));
+  write(dir, "docs/domain/events.yaml", eventsWithAggregateStatus("unresolved"));
+  const review = lint(dir, ["ST-001"]);
+  assert.equal(review.code, 0, review.out);
+  assert.match(review.out, /is unresolved/);
+
+  const blocked = status(dir, "ST-001", "ready-for-human-review");
+  assert.equal(blocked.code, 1, blocked.out);
+  assert.match(blocked.out, /is unresolved/);
+  assert.match(readFileSync(join(dir, "docs/stories/ST-001-place-order.md"), "utf8"), /^status: review$/m);
+});
+
+test("an unresolved aggregate without a hotspot warns; with one it stays quiet", () => {
+  const dir = setup(story(scenarios(2)));
+  write(dir, "docs/domain/events.yaml", eventsWithAggregateStatus("unresolved"));
+  const without = validateEvents(dir);
+  assert.equal(without.code, 0, without.out);
+  assert.match(without.out, /without an open hotspot/);
+
+  write(
+    dir,
+    "docs/domain/events.yaml",
+    `${eventsWithAggregateStatus("unresolved")}hotspots:
+  - id: HS-1
+    question: Is the order its own consistency boundary?
+    refs: [AGG-Order]
+    status: open
+`,
+  );
+  const withHotspot = validateEvents(dir);
+  assert.equal(withHotspot.code, 0, withHotspot.out);
+  assert.doesNotMatch(withHotspot.out, /without an open hotspot/);
 });
 
 test("legacy type: story stays valid on upgrade, with warnings instead of errors", () => {

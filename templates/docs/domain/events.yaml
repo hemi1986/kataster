@@ -6,6 +6,9 @@
 #
 # Written by /bootstrap, /adopt, /event-storming and /feature. Validated and rendered to
 # docs/domain/event-storming.md after every write. An empty model is valid: it grows during discovery.
+#
+# Aggregates carry an optional status: target (default when missing), as-is (factual boundary, needs evidence),
+# or unresolved (boundary unclear, needs an open hotspot and grilling; no story on it can be ready).
 
 version: 1
 domain: {{project}}

@@ -20,6 +20,7 @@ is what to read when you are unsure where something belongs.
 | Prototypes (throwaway, on branch `prototype/<slug>`) | `docs/prototypes/<slug>/` | `ux-designer`; verdict in the story and `ux-guidelines.md` |
 | Glossary (ubiquitous language) | `CONTEXT.md` | `domain-model` skill |
 | Event storming model | `docs/domain/events.yaml` | event storming / `domain-architect` |
+| Gap register (as-is ↔ target) | `docs/domain/gap-register.md` | `gap-register.ts` (generated rows) + user decisions outside the block |
 | Visualization (generated!) | `docs/domain/event-storming.md` | hook – never edit manually |
 | Context map | `docs/domain/context-map.md` | `domain-architect` |
 | Logical data model | `docs/architecture/data-model.md` | `domain-architect` |
@@ -82,6 +83,10 @@ is what to read when you are unsure where something belongs.
 - **1-command rule.** One story = one command + its events on one aggregate, at most 4 Gherkin scenarios. A second
   command is a second story, never a second scenario set. `type: domain` requires `aggregate` and `command` and the
   linter cross-checks them against `events.yaml`.
+- **Aggregate status is honest.** `target` is the desired boundary (the default when the field is missing);
+  `as-is` is the factual boundary recovered from code and needs `evidence`; `unresolved` means the boundary is
+  unclear and needs an open hotspot. A story on an `unresolved` aggregate cannot leave `review` – settle the
+  boundary first. `/adopt` never writes `target` for something inferred from code.
 - **Fast lane.** `type: chore` and `type: task` cover UI tweaks, refactorings, dependencies and setup. `/implement`
   takes the fast lane automatically (or with `--fast`): branch → implement → lint/typecheck/tests → pull request, no
   Gherkin matching and no formal review pass. `type: tech-task` keeps its checklist and acceptance; `type: spike` is

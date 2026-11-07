@@ -132,6 +132,11 @@ domain, architecture, testability – and one mechanical rule: **one story = one
 aggregate**, at most four Gherkin scenarios. `aggregate` and `command` are required frontmatter and are cross-checked
 against `docs/domain/events.yaml`.
 
+Aggregates carry a status: `target` (the default when the field is missing), `as-is` (the factual boundary
+recovered from code, with evidence) or `unresolved` (the boundary is unclear). A story on an `unresolved`
+aggregate cannot leave `review`; `/adopt` writes `as-is` or `unresolved`, never an invented target. Every `as-is`
+aggregate gets a row in `docs/domain/gap-register.md`, linking the as-is and target context maps.
+
 The **spec linter** is the gate and costs no LLM tokens:
 
 ```bash
@@ -209,9 +214,10 @@ open UI question during engineering; if the prototype changes the story, the sto
    conventions and de-facto ADRs; it writes `<package>/AGENTS.md` + `<package>/CLAUDE.md`, then grills you.
 4. The safety net turns confirmed rules into checks (types, lint/boundary, tests, hooks) – report-only with a
    baseline first, so a brownfield repository does not start red.
-5. The gap analysis records **contradictions, missing behaviour and dead code** in the adoption report. It creates
-   **no stories by default** – what already works is documented, not re-storied. `/adopt <scope> --stories` turns
-   the selected gaps into a backlog when you want one.
+5. The gap analysis records **contradictions, missing behaviour and dead code** in the adoption report and the
+   **gap register** (`docs/domain/gap-register.md`): one row per `as-is`/`unresolved` aggregate, linking the
+   as-is boundary to the target model. It creates **no stories by default** – what already works is documented,
+   not re-storied. `/adopt <scope> --stories` turns the selected gaps into a backlog when you want one.
 6. `/adopt <next path>` for the next slice; `/adopt <scope> --stories`, `/review-stories`, then `/implement`.
 
 Adopt in slices: one bounded context completely beats the whole repository shallowly. The root `AGENTS.md` stays

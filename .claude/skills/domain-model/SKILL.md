@@ -50,6 +50,23 @@ Same word, different meaning in two places → a hint at a bounded context bound
 - **An invariant is stated once, on the aggregate** (user, 2026-10-01). A command's `rules` list only what it adds beyond them: defaults, actor permissions no invariant carries, required input, checks across aggregate or context boundaries, and consequences of the transition. Everything the stored state has to satisfy is an invariant, not a rule – the spec engineer reads both when deriving scenarios.
 - Sign of a wrong aggregate: a command needs data from several aggregates to check a rule.
 
+### Aggregate status: target, as-is, unresolved
+Every aggregate carries a status; a missing `status` means `target`, so existing models stay valid.
+
+| Status | Meaning | Rule |
+|---|---|---|
+| `target` | The boundary the project wants. The default in greenfield and in a confirmed target model. | Only a user decision makes an inferred boundary `target`. |
+| `as-is` | The factual consistency boundary recovered from code. | Requires `evidence`: the table, service method or path that marks it. |
+| `unresolved` | The boundary is unclear. | Requires an open hotspot (`refs: [AGG-…]`) and grilling. No story on it can become ready. |
+
+**Prefer `as-is` or `unresolved` over an invented aggregate.** `/adopt` never writes `target` for something it
+inferred from code. If you cannot name the table, method or path that holds the boundary together, it is not
+`as-is` – it is `unresolved`. After changing a status or evidence, refresh the gap register:
+
+```bash
+node .claude/skills/adopt/scripts/gap-register.ts
+```
+
 ## 4. Logical Data Model (`docs/architecture/data-model.md`)
 - Per aggregate: root entity, entities, value objects, attributes with **domain** types (e.g. `SerialNumber`, `Money`, `Timestamp`), required/optional.
 - Lifecycle as a Mermaid `stateDiagram-v2` (derive states from the events).

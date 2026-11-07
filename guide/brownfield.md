@@ -62,7 +62,9 @@ contradictions, and questions with a recommended answer. Confidence is `high`, `
 ### 4. Drafts the slice
 
 - `CONTEXT.md` – the slice's terms, competing spellings under `_Avoid_`
-- `docs/domain/events.yaml` – 10–25 candidate events, commands, actors, read models, flows, hotspots
+- `docs/domain/events.yaml` – 10–25 candidate events, commands, actors, read models, flows, hotspots. Each
+  aggregate is `as-is` with evidence (table, service method, path) or `unresolved` with an open hotspot – never
+  an invented `target`
 - `docs/domain/context-map.md`, `docs/architecture/data-model.md` (as-is)
 - `docs/engineering/conventions.md` – how the code actually works today, including the monorepo tooling
 - `docs/adr/` – de-facto decisions worth recording (`status: proposed`)
@@ -101,10 +103,11 @@ that fails on existing behaviour – that would be a story.
 | Missing | Candidate in the gap register |
 | Dead | Candidate: removal or an explicit "leave it" |
 
-**The first adoption pass creates no stories.** It records the gap in `docs/domain/adoption-report.md` (and open
-questions in `OPEN_QUESTIONS.md`), so the model can be reviewed before anyone commits to work. Only
-`/adopt <scope> --stories` (or an explicit "turn these into stories") turns the selected gaps into stories in the
-main session (spec engineer, spec linter gate).
+**The first adoption pass creates no stories.** It records the gap in `docs/domain/adoption-report.md` and
+`docs/domain/gap-register.md` (one generated row per `as-is`/`unresolved` aggregate, with the as-is and target
+context links), and open questions in `OPEN_QUESTIONS.md`, so the model can be reviewed before anyone commits to
+work. Only `/adopt <scope> --stories` (or an explicit "turn these into stories") turns the selected gaps into
+stories in the main session (spec engineer, spec linter gate).
 
 **Behaviour that already works does not become a story.** That turns the backlog into a description of the past.
 

@@ -11,6 +11,7 @@ import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import * as d from "../lib/discovery.ts";
 import * as e from "../lib/engineering.ts";
+import { writeGapRegister } from "../lib/gaps.ts";
 
 let data: d.Obj;
 try {
@@ -30,6 +31,12 @@ if (rel === "docs/domain/events.yaml") {
   if (report.ok && model !== null) {
     d.writeEventStormingMd(model);
     d.writeBacklogMd();
+    try {
+      // Keep an existing register in sync; never create one for a project that has not adopted anything.
+      writeGapRegister({ onlyIfExists: true });
+    } catch {
+      // a broken register never blocks a model write
+    }
   }
 } else if (d.storyFiles().some((f) => d.realPath(f) === d.realPath(path))) {
   const stories = d.validateStories(report, path, true);
