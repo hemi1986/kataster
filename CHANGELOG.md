@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 – 2026-11-07
 
 - **Research as evidence.** New read-only `researcher` agent (Claude Code and OpenCode) that searches specs,
   standards and exact-version official documentation and returns structured findings with source, retrieval date,
