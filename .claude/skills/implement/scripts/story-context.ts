@@ -100,6 +100,39 @@ if (glossary) {
   if (entries.length) out.push("## Glossary (`CONTEXT.md`, terms used by the story)", "", ...entries.flatMap((x) => [x, ""]));
 }
 
+// Context maps: the target says where the story belongs, the as-is map says what the code does today.
+const contextIds = new Set<string>();
+if (typeof story.meta.context === "string") contextIds.add(story.meta.context);
+for (const match of storyText.matchAll(/\bBC-[A-Za-z0-9]+\b/g)) contextIds.add(match[0]);
+
+function contextBlocks(path: string): string[] {
+  const text = read(path);
+  if (!text) return [];
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = /^(#{2,4})\s+(BC-[A-Za-z0-9]+)\b/.exec(lines[i]);
+    if (!match || !contextIds.has(match[2])) continue;
+    const level = match[1].length;
+    const block = [lines[i]];
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const heading = /^(#{1,6})\s+/.exec(lines[j]);
+      if (heading && heading[1].length <= level) break;
+      block.push(lines[j]);
+    }
+    out.push(block.join("\n").trim());
+  }
+  return out;
+}
+
+const targetBlocks = contextBlocks(join(d.ROOT, "docs", "domain", "context-map.md"));
+const asIsBlocks = contextBlocks(join(d.ROOT, "docs", "domain", "context-map.as-is.md"));
+if (targetBlocks.length || asIsBlocks.length) {
+  out.push("## Context maps", "");
+  if (targetBlocks.length) out.push("### Target (`docs/domain/context-map.md`)", "", ...targetBlocks.flatMap((block) => [block, ""]));
+  if (asIsBlocks.length) out.push("### As-is (`docs/domain/context-map.as-is.md`)", "", ...asIsBlocks.flatMap((block) => [block, ""]));
+}
+
 // Data model
 const dataModel = read(join(d.ROOT, "docs", "architecture", "data-model.md"));
 if (dataModel && aggregates.size) {

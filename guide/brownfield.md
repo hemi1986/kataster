@@ -77,7 +77,9 @@ contradictions, and questions with a recommended answer. Confidence is `high`, `
 - `docs/domain/events.yaml` – 10–25 candidate events, commands, actors, read models, flows, hotspots. Each
   aggregate is `as-is` with evidence (table, service method, path) or `unresolved` with an open hotspot – never
   an invented `target`
-- `docs/domain/context-map.md`, `docs/architecture/data-model.md` (as-is)
+- `docs/domain/context-map.as-is.md` (recovered boundaries, with evidence) and
+  `docs/architecture/data-model.md` (as-is). The target map `docs/domain/context-map.md` is read, never written
+  here; if it does not exist yet, the gap register says “target not decided”.
 - `docs/engineering/conventions.md` – how the code actually works today, including the monorepo tooling
 - `docs/adr/` – de-facto decisions worth recording (`status: proposed`)
 - **domain docs, by scope** – a real domain package gets `<package>/AGENTS.md` plus `<package>/CLAUDE.md` from
@@ -116,7 +118,7 @@ If the current behaviour contradicts the story, the story goes back to `review`;
 
 | Class | Default |
 |---|---|
-| Exists and is intended | Documentation (data model, context map) – no action |
+| Exists and is intended | Documentation (data model, as-is context map) – no action |
 | Exists but contradicts the model | Candidate in the gap register |
 | Missing | Candidate in the gap register |
 | Dead | Candidate: removal or an explicit "leave it" |
@@ -135,11 +137,14 @@ stories in the main session (spec engineer, spec linter gate).
 and checks, gaps, what was deliberately left alone, open hotspots, next slice.
 
 ```bash
+# a real domain package
 node .claude/skills/adopt/scripts/repo-map.ts --adopt apps/billing
+# a concept slice across layers
+node .claude/skills/adopt/scripts/repo-map.ts --adopt-slice order
 ```
 
 The next session sees the progress in `AGENTS.md` and the map, and starts the next slice with
-`/adopt <path>`.
+`/adopt <scope>`.
 
 ## What lives where
 
@@ -155,6 +160,9 @@ The next session sees the progress in `AGENTS.md` and the map, and starts the ne
 | `docs/engineering/checks.yaml` | on check | what runs at edit time and at Stop/CI |
 | `docs/architecture/repo-map.md` | on demand | generated map: packages, edges, consumers, ranking |
 | `CONTEXT.md` | every session | the domain language |
+| `docs/domain/context-map.md` | on demand | **target** contexts and relationships |
+| `docs/domain/context-map.as-is.md` | on demand | **as-is** snapshot recovered by `/adopt`, with evidence |
+| `docs/domain/gap-register.md` | on demand | generated as-is ↔ target rows and the user's decisions |
 
 Nested `AGENTS.md` is loaded on demand by OpenCode; Claude Code loads the nested `CLAUDE.md` when it reads or
 edits a file there. That is why every package gets both files.

@@ -15,7 +15,9 @@ Architecture decisions (ADRs, tech stack) belong to the `architect` skill. The d
 |---|---|
 | Glossary (ubiquitous language) | `CONTEXT.md` at the repo root – format: [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) |
 | Event storming model incl. `bounded_contexts`, `aggregates` | `docs/domain/events.yaml` |
-| Context map | `docs/domain/context-map.md` |
+| Target context map | `docs/domain/context-map.md` – where the domain is going |
+| As-is context map | `docs/domain/context-map.as-is.md` – recovered from code, written only by `/adopt` |
+| Gap register | `docs/domain/gap-register.md` – links as-is and target, generated rows + user decisions |
 | Logical data model | `docs/architecture/data-model.md` – template: `templates/data-model.md` |
 
 ## 1. Language (during every session)
@@ -39,7 +41,8 @@ Same word, different meaning in two places → a hint at a bounded context bound
 
 ## 2. Bounded Contexts & Context Map
 - Draw boundaries along language (same word, different meaning → different context) and responsibility (who decides?).
-- `docs/domain/context-map.md`: per context its purpose, core terms, owner role. Relationships as a Mermaid `flowchart` using the patterns Customer/Supplier, Conformist, Anti-Corruption Layer, Shared Kernel, Published Language.
+- `docs/domain/context-map.md` is the **target** map: per context its purpose, core terms, owner role. Relationships as a Mermaid `flowchart` using the patterns Customer/Supplier, Conformist, Anti-Corruption Layer, Shared Kernel, Published Language.
+- `docs/domain/context-map.as-is.md` is the **as-is** snapshot: what the code does today, with evidence. Only `/adopt` writes it; every other discovery path writes the target. The gap register links both.
 - 2–4 contexts are typical for a small system. More only with justification.
 - Maintain them in `events.yaml` under `bounded_contexts`, and group the terms in `CONTEXT.md` by context.
 

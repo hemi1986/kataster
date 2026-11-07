@@ -20,10 +20,12 @@ kebab-case slug for the adoption (`adoption-<scope>`) for the report file.
 1. Read `.claude/project.json`. If it is missing, tell the user to run `npx kataster init` first and stop.
 2. If the repository has no code yet, this is the wrong command: use `/bootstrap`.
 3. Read what already exists, before analysing anything: `CONTEXT.md`, `docs/product/vision.md`,
-   `docs/domain/events.yaml`, `docs/domain/context-map.md`, `docs/architecture/data-model.md`,
-   `docs/architecture/repo-map.md`, `docs/engineering/conventions.md`, `docs/adr/`, `README*`, existing `docs/`
-   and any `AGENTS.md`/`CLAUDE.md`. Existing documentation is **primary evidence** – it outranks your inference
-   from code. Contradictions between docs and code are findings, not something to resolve silently.
+   `docs/domain/events.yaml`, `docs/domain/context-map.md` (**target**), `docs/domain/context-map.as-is.md`
+   (**as-is**), `docs/architecture/data-model.md`, `docs/architecture/repo-map.md`,
+   `docs/engineering/conventions.md`, `docs/adr/`, `README*`, existing `docs/` and any `AGENTS.md`/`CLAUDE.md`.
+   Existing documentation is **primary evidence** – it outranks your inference from code. The target map is
+   read-only here: it says where the project wants to go, not what the code does. Contradictions between docs and
+   code are findings, not something to resolve silently.
 
 ## Phase 0 – Repository map (deterministic, no questions)
 
@@ -121,7 +123,13 @@ Merge the reports into one picture. Write the artifacts **as a draft**, every un
   `as-is` with `evidence` (table, service method, path) when the code shows a factual consistency boundary, or
   `unresolved` plus an open hotspot when the boundary is unclear. **Never `target` for a boundary inferred from
   code** – a target is a decision the user makes, not a reading of the repository.
-- **`docs/domain/context-map.md`** – the boundaries the module structure suggests, marked as a proposal.
+- **`docs/domain/context-map.as-is.md`** – the boundaries the module structure actually shows, with evidence.
+  Create it from `.claude/skills/adopt/templates/context-map.as-is.md` on the first slice (replace
+  `{{project}}`, `{{date}}` and `{{commit}}`) and add one `### BC-… – <name>` section per recovered context
+  (the gap register links those headings). **Never write
+  `docs/domain/context-map.md`** – that is the target map, owned by `/bootstrap`, `/shape`, `/feature`,
+  `/event-storming` and `/improve-codebase-architecture`. If no target exists yet, leave it absent; the gap
+  register shows “target not decided”.
 - **`docs/architecture/data-model.md`** – the **as-is** model for the slice, derived from schema and code.
 - **`docs/engineering/conventions.md`** – fill what the slice actually does: module layout, how a command runs,
   read models, "now", texts, test data, seam catalog. Include how the monorepo tooling is used.
@@ -287,7 +295,8 @@ Date: YYYY-MM-DD · Commit: <sha> · Slice: <paths> · Analysts: <n> lenses
 ## Repository map (tooling, packages, why this slice)
 ## What the repository is (facts)
 ## Confirmed domain model
-- contexts, aggregates, glossary changes
+- contexts, aggregates (with status), glossary changes
+- as-is context map and the target links the gap register found
 ## Package documentation written
 - <path>/AGENTS.md + CLAUDE.md – what was confirmed and what stays [OPEN]
 ## Contradictions found and how they were resolved
@@ -330,6 +339,9 @@ checks created, gap candidates (and stories only if requested), ADRs proposed. T
 - **Never present an inference as a fact.** Confidence and evidence, or a hotspot.
 - **Aggregates are honest.** `as-is` needs evidence; `unresolved` needs an open hotspot; `target` is a user
   decision. An invented aggregate is worse than an unresolved one – it makes the story look ready when it is not.
+- **Adopt writes as-is, never target.** `docs/domain/context-map.as-is.md` and the `as-is` aggregates describe
+  the repository. The target map (`docs/domain/context-map.md`) and `target` aggregates are decisions made in
+  `/bootstrap`, `/shape` or `/feature` – do not “fix” them while adopting.
 - **The user owns the language.** You may propose a better word; you may not rename the domain on your own.
 - **Slice by concept, not by package.** In a layered repository a domain runs through `api/`, `services/` and
   `repositories/`. Use the concept clusters and the resolver; never treat a generic `services`/`utils` package as

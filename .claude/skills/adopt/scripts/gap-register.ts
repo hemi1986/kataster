@@ -10,6 +10,7 @@
  */
 import { checkGapRegister, writeGapRegister } from "../../../lib/gaps.ts";
 import { rel, ROOT } from "../../../lib/discovery.ts";
+import { join } from "node:path";
 
 const args = process.argv.slice(2);
 
@@ -50,7 +51,10 @@ try {
   else if (result.status === "unchanged") console.log(`Kept ${path}: already up to date.`);
   else if (result.status === "kept") console.log(`Kept ${path}: it has no generated markers, so it is treated as hand-written.`);
   if (args.includes("--json")) console.log(JSON.stringify({ ...result, path: rel(result.path) }, null, 2));
-  console.log(`As-is and target context maps: ${rel(`${ROOT}/docs/domain/context-map.as-is.md`)} / ${rel(`${ROOT}/docs/domain/context-map.md`)}.`);
+  console.log(
+    `As-is and target context maps: ${rel(join(ROOT, "docs", "domain", "context-map.as-is.md"))} / ` +
+      `${rel(join(ROOT, "docs", "domain", "context-map.md"))}.`,
+  );
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);

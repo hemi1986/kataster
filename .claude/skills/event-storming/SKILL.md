@@ -12,7 +12,8 @@ Focus of this session: the arguments from the invocation (empty = big picture ac
 
 ## Preparation
 1. Call the `skill` tool for `grilling` and `domain-model`. Grilling sets how you ask questions; domain-model sets how you guard the language in `CONTEXT.md`.
-2. Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md`.
+2. Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md` (target),
+   `docs/domain/context-map.as-is.md` and `docs/domain/gap-register.md` when they exist.
 3. Format reference: `templates/events.example.yaml` in this skill folder (unrelated example domain – copy the format only, no content).
 
 ## Facilitation Rules

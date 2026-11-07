@@ -22,7 +22,8 @@ is what to read when you are unsure where something belongs.
 | Event storming model | `docs/domain/events.yaml` | event storming / `domain-architect` |
 | Gap register (as-is ↔ target) | `docs/domain/gap-register.md` | `gap-register.ts` (generated rows) + user decisions outside the block |
 | Visualization (generated!) | `docs/domain/event-storming.md` | hook – never edit manually |
-| Context map | `docs/domain/context-map.md` | `domain-architect` |
+| Target context map | `docs/domain/context-map.md` | `domain-architect`, `/bootstrap`, `/shape`, `/feature`, `/improve-codebase-architecture`; `/adopt` never writes it |
+| As-is context map | `docs/domain/context-map.as-is.md` | `/adopt` only |
 | Logical data model | `docs/architecture/data-model.md` | `domain-architect` |
 | Repository map (generated!) | `docs/architecture/repo-map.json`, `docs/architecture/repo-map.md` | `repo-map.ts` – packages, roles, concept slices; never edit manually |
 | Package docs (loaded on demand) | `<package>/AGENTS.md` + `<package>/CLAUDE.md` | `/adopt`, user confirms the prose |
@@ -90,6 +91,10 @@ is what to read when you are unsure where something belongs.
   `as-is` is the factual boundary recovered from code and needs `evidence`; `unresolved` means the boundary is
   unclear and needs an open hotspot. A story on an `unresolved` aggregate cannot leave `review` – settle the
   boundary first. `/adopt` never writes `target` for something inferred from code.
+- **As-is and target are separate.** `/adopt` writes `docs/domain/context-map.as-is.md` and `as-is` aggregates;
+  it never edits the target map `docs/domain/context-map.md`. `/bootstrap`, `/shape`, `/feature`,
+  `/event-storming`, `domain-architect` and `/improve-codebase-architecture` write the target. The gap register
+  (`docs/domain/gap-register.md`) links both sides; its generated block comes from `events.yaml`.
 - **Fast lane.** `type: chore` and `type: task` cover UI tweaks, refactorings, dependencies and setup. `/implement`
   takes the fast lane automatically (or with `--fast`): branch → implement → lint/typecheck/tests → pull request, no
   Gherkin matching and no formal review pass. `type: tech-task` keeps its checklist and acceptance; `type: spike` is

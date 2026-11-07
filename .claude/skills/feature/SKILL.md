@@ -57,7 +57,7 @@ ADRs and `docs/product/ux-guidelines.md` first.
 Do not run an event storming for a bug and do not create a feature slug unless the rule changes.
 
 ## 1. Preparation
-Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md`, `docs/architecture/data-model.md`, `docs/adr/`, `docs/stories/BACKLOG.md`. Find out what already exists for this idea (events, stories, hotspots) before asking anything. With an intake result, use its source and matching story instead of searching from scratch. If a linked story exists, pull the tracker first (`/backlog-sync pull`) so the mirror is current.
+Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md` (target), `docs/domain/context-map.as-is.md`, `docs/domain/gap-register.md`, `docs/architecture/data-model.md`, `docs/adr/`, `docs/stories/BACKLOG.md`. Find out what already exists for this idea (events, stories, hotspots) before asking anything. With an intake result, use its source and matching story instead of searching from scratch. If a linked story exists, pull the tracker first (`/backlog-sync pull`) so the mirror is current.
 
 ## 2. Grill the idea
 Call the `skill` tool four times, for `grilling`, `domain-model`, `architect` and `ux-design` (the first three are the set of `/grill-with-docs`, which can't be called from a skill). Grill the user until the frontier is empty and they confirm a shared understanding. The grilling carries the three perspectives the spec linter cannot check – product, engineering, UX. With an intake result, the ticket's claims and the intake's `signals` seed the frontier; unresolved comments and contradictions are the first questions. Typical branches:

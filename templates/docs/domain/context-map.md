@@ -1,4 +1,8 @@
-# Context map – {{project}}
+# Target context map – {{project}}
+
+> Where the domain is going, not what the code does today. The as-is map is `context-map.as-is.md` and is
+> written only by `/adopt`; the gap register links both sides. `/bootstrap`, `/shape`, `/feature`,
+> `/event-storming`, `domain-architect` and `/improve-codebase-architecture` write this file.
 
 <!--
   One section per bounded context: purpose, core terms, owner role. Relationships as a Mermaid flowchart

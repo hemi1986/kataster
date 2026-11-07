@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 – 2026-11-07
 
 - **Honest aggregate status.** Aggregates in `docs/domain/events.yaml` can be `target` (the default when the field
   is missing), `as-is` (a factual brownfield boundary, with `evidence`) or `unresolved` (the boundary is unclear
@@ -21,6 +21,10 @@
   behaviour about to change gets a characterization test first: current behaviour pinned, green on unchanged code,
   committed separately, then the story tests. A discrepancy is a finding – the story goes back to `review`, never
   the test to the expected value. The fast lane skips this except for an explicit refactoring.
+- **As-is and target are separate.** `docs/domain/context-map.md` is the target map; `/adopt` writes only
+  `docs/domain/context-map.as-is.md` and links both through the gap register. `/shape` and
+  `/improve-codebase-architecture` write the target map; `/bootstrap`, `/feature` and `domain-architect` do the
+  same. Existing projects keep their `context-map.md` as the target – no file is moved or renamed.
 
 ## 0.4.0 – 2026-11-03
 

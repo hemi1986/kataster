@@ -42,9 +42,11 @@ write **nothing**. Without it, write the artifact only after the user confirms t
 
 ## 1. Read and scan
 
-Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md`,
-`docs/architecture/data-model.md`, `docs/architecture/repo-map.md`/`.json`, `docs/engineering/conventions.md`,
-`docs/adr/`, `docs/stories/BACKLOG.md`, `docs/product/ux-guidelines.md`.
+Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md` (target),
+`docs/domain/context-map.as-is.md` (as-is), `docs/domain/gap-register.md`, `docs/architecture/data-model.md`,
+`docs/architecture/repo-map.md`/`.json`, `docs/engineering/conventions.md`, `docs/adr/`, `docs/stories/BACKLOG.md`,
+`docs/product/ux-guidelines.md`. The target map is where the idea belongs; the as-is map and the gap register
+say what the code does today. Do not treat the as-is map as the target.
 
 Also scan the **configuration and integration points** for systems that already own the data the idea is about:
 `.env.example`, `configuration.ts`, config DTOs, API clients, external ids in entities. A name that appears only
@@ -94,6 +96,12 @@ A new **service** is not automatically a new **domain**, and a new domain is not
 Separate contexts can share infrastructure packages; they must not share a domain model just because the words
 look alike. Same word, different meaning (Product as dish vs. Product as sellable variant) is the classic reason
 to split.
+
+When the user accepts a placement, write it into the **target** map `docs/domain/context-map.md` (purpose, core
+terms, relationships) – never into `context-map.as-is.md`. A new context also gets a `bounded_contexts` entry in
+`docs/domain/events.yaml` with `id`, `name` and `purpose` only: no aggregates, commands or stories until `/feature`
+does the focused work. Update the target map only for what the user actually accepted; the rest stays a proposal in
+the initiative brief.
 
 Produce a recommendation **with at least one alternative and its consequence**, plus a confidence:
 
@@ -191,3 +199,5 @@ promoted: ""              # feature:<slug> once slices are handed to /feature
 - Do not write an artifact when the user only wants to test the method.
 - Keep the artifact project-neutral except for the project's own terms from `CONTEXT.md`.
 - Never present an analogue's domain model as the new context's model.
+- Write the **target** context map, never the as-is map. `/shape` decides where the work belongs, not what the
+  code does today.

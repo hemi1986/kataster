@@ -22,7 +22,9 @@ Two rules make it work:
 |---|---|---|
 | `CONTEXT.md` | Glossary – the ubiquitous language. One canonical word per concept, alternatives under `_Avoid_` | user, maintained by the agent |
 | `docs/domain/events.yaml` | Event storming model: actors, contexts, aggregates, events, commands, policies, read models, hotspots, flows | user, written by the agent |
-| `docs/domain/context-map.md` | Bounded contexts and their relationships (DDD patterns) | domain-architect |
+| `docs/domain/context-map.md` | **Target** bounded contexts and their relationships (DDD patterns) | domain-architect, `/bootstrap`, `/shape`, `/feature`, `/improve-codebase-architecture` |
+| `docs/domain/context-map.as-is.md` | **As-is** snapshot recovered from code, with evidence | `/adopt` only |
+| `docs/domain/gap-register.md` | Generated rows for every `as-is`/`unresolved` aggregate, linking as-is and target; decisions outside the block | `/adopt`, user |
 | `docs/architecture/data-model.md` | Logical, stack-neutral model per aggregate; lifecycle and ER diagrams | domain-architect |
 | `docs/engineering/conventions.md` | How code is built here, including the seam catalog | user |
 | `docs/adr/` | Architecture decisions. `proposed` until the user accepts; accepted ones are superseded, never edited | user |

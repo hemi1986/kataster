@@ -20,7 +20,7 @@ Rules:
   `project.json`, `AGENTS.md` block) is not. Never make an upgrade overwrite user content.
 - Run `npm test` and `npm run typecheck --prefix .claude` before committing.
 
-## Workflow contract (0.4)
+## Workflow contract (0.5)
 
 The workflow is spec-driven and mechanical, not a simulated organisation:
 
@@ -32,6 +32,15 @@ The workflow is spec-driven and mechanical, not a simulated organisation:
 - **Spec linter:** `.claude/skills/user-stories/scripts/lint-story.ts` (also `kataster lint-story`) is the gate.
   Green → `ready-for-human-review`; the user approves `ready`. No LLM pre-implementation review.
 - **Fast lane:** `type: chore` / `type: task`; `/implement` skips Gherkin matching and formal reviews.
+- **Honest aggregates:** `status: target` (default when missing), `as-is` with evidence, or `unresolved` with an
+  open hotspot. A story on an `unresolved` aggregate cannot leave `review`. `/adopt` writes `as-is`/`unresolved`,
+  never an invented target.
+- **Concept slices:** a layered repository is adopted by concept, not by package. The repo map marks generic layer
+  packages and clusters shared stems/tables; `slice.ts` resolves globs, routes, tables, events, clusters or terms.
+- **Characterization before test-first:** in the domain lane, an untested affected path gets a characterization
+  test first, committed separately; a contradiction sends the story back to `review`.
+- **As-is vs target:** `docs/domain/context-map.md` is the target; `/adopt` writes only
+  `docs/domain/context-map.as-is.md`; the gap register links both.
 - **Reviewers report, never plan:** `code-reviewer` and `acceptance-tester` create no stories. Findings are fixed in
   the story or handed back as open questions.
 - The installer prunes the retired workflow files named in `OBSOLETE` (only manifest-tracked, unmodified ones), so a
