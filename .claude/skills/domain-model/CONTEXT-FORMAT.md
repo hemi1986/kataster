@@ -42,6 +42,6 @@ _Avoid_: Fix, service
 
 ## Single vs multi-context
 
-During discovery there is one root `CONTEXT.md`, grouped by bounded context; the relationships between contexts are in `docs/domain/context-map.md`.
+During discovery there is one root `CONTEXT.md`, grouped by bounded context; the relationships between contexts are in `docs/domain/context-map.md` (target). `/adopt` records what the code does today in `docs/domain/context-map.as-is.md` – not a target.
 
 When code exists and contexts become separate modules, the glossary may be split: a root `CONTEXT-MAP.md` lists the contexts and links to one `CONTEXT.md` per module (e.g. `src/workshop/CONTEXT.md`). Only split when the code is actually structured that way – decide it via ADR.

@@ -15,7 +15,9 @@ Architecture decisions (ADRs, tech stack) belong to the `architect` skill. The d
 |---|---|
 | Glossary (ubiquitous language) | `CONTEXT.md` at the repo root – format: [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md) |
 | Event storming model incl. `bounded_contexts`, `aggregates` | `docs/domain/events.yaml` |
-| Context map | `docs/domain/context-map.md` |
+| Target context map | `docs/domain/context-map.md` – where the domain is going |
+| As-is context map | `docs/domain/context-map.as-is.md` – recovered from code, written only by `/adopt` |
+| Gap register | `docs/domain/gap-register.md` – links as-is and target, generated rows + user decisions |
 | Logical data model | `docs/architecture/data-model.md` – template: `templates/data-model.md` |
 
 ## 1. Language (during every session)
@@ -39,7 +41,8 @@ Same word, different meaning in two places → a hint at a bounded context bound
 
 ## 2. Bounded Contexts & Context Map
 - Draw boundaries along language (same word, different meaning → different context) and responsibility (who decides?).
-- `docs/domain/context-map.md`: per context its purpose, core terms, owner role. Relationships as a Mermaid `flowchart` using the patterns Customer/Supplier, Conformist, Anti-Corruption Layer, Shared Kernel, Published Language.
+- `docs/domain/context-map.md` is the **target** map: per context its purpose, core terms, owner role. Relationships as a Mermaid `flowchart` using the patterns Customer/Supplier, Conformist, Anti-Corruption Layer, Shared Kernel, Published Language.
+- `docs/domain/context-map.as-is.md` is the **as-is** snapshot: what the code does today, with evidence. Only `/adopt` writes it; every other discovery path writes the target. The gap register links both.
 - 2–4 contexts are typical for a small system. More only with justification.
 - Maintain them in `events.yaml` under `bounded_contexts`, and group the terms in `CONTEXT.md` by context.
 
@@ -49,6 +52,23 @@ Same word, different meaning in two places → a hint at a bounded context bound
 - Per aggregate in `events.yaml`: `context`, `invariants` (as testable statements). Assign commands and events via `aggregate`.
 - **An invariant is stated once, on the aggregate** (user, 2026-10-01). A command's `rules` list only what it adds beyond them: defaults, actor permissions no invariant carries, required input, checks across aggregate or context boundaries, and consequences of the transition. Everything the stored state has to satisfy is an invariant, not a rule – the spec engineer reads both when deriving scenarios.
 - Sign of a wrong aggregate: a command needs data from several aggregates to check a rule.
+
+### Aggregate status: target, as-is, unresolved
+Every aggregate carries a status; a missing `status` means `target`, so existing models stay valid.
+
+| Status | Meaning | Rule |
+|---|---|---|
+| `target` | The boundary the project wants. The default in greenfield and in a confirmed target model. | Only a user decision makes an inferred boundary `target`. |
+| `as-is` | The factual consistency boundary recovered from code. | Requires `evidence`: the table, service method or path that marks it. |
+| `unresolved` | The boundary is unclear. | Requires an open hotspot (`refs: [AGG-…]`) and grilling. No story on it can become ready. |
+
+**Prefer `as-is` or `unresolved` over an invented aggregate.** `/adopt` never writes `target` for something it
+inferred from code. If you cannot name the table, method or path that holds the boundary together, it is not
+`as-is` – it is `unresolved`. After changing a status or evidence, refresh the gap register:
+
+```bash
+node .claude/skills/adopt/scripts/gap-register.ts
+```
 
 ## 4. Logical Data Model (`docs/architecture/data-model.md`)
 - Per aggregate: root entity, entities, value objects, attributes with **domain** types (e.g. `SerialNumber`, `Money`, `Timestamp`), required/optional.

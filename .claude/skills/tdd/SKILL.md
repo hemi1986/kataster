@@ -31,6 +31,16 @@ When the shape of that interface is itself in question (how deep the module is, 
 - **Tautological**: the assertion recomputes the expected value the way the code does (`expect(add(a, b)).toBe(a + b)`, a snapshot derived by hand the same way, a constant asserted equal to itself), so it passes by construction and can never disagree with the code. Expected values must come from an independent source of truth: a known-good literal, a worked example, the spec.
 - **Horizontal slicing**: writing all tests first, then all implementation. Bulk tests verify _imagined_ behavior: you test the _shape_ of things rather than user-facing behavior, the tests go insensitive to real changes, and you commit to test structure before understanding the implementation. Work in **vertical slices** instead: one test → one implementation → repeat, each test a **tracer bullet** that responds to what the last cycle taught you.
 
+## Characterization before the loop (legacy code)
+
+When behaviour already exists and has no test, the red → green loop has no safety net. Write a **characterization
+test** first (Michael Feathers): assert what the code does today, not what you want it to do. Run it green on the
+unchanged code, commit it separately, and only then start the story's red test. A characterization test that shows
+different behaviour than the story assumes is a finding – the story goes back to review, not the test to the
+expected value.
+
+This belongs to the domain lane; the fast lane skips it except for an explicit refactoring.
+
 ## Rules of the loop
 
 - **Red before green.** Write the failing test first, then only enough code to pass it. Don't anticipate future tests or add speculative features.

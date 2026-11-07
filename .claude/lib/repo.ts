@@ -18,6 +18,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { graphLabel, graphOrigin, graphToolLabel, queryToolGraph, type ToolGraph } from "./toolgraph.ts";
+import { classifyPackageRoles, clusterSlices, sourceFiles, type PackageRole, type SliceSuggestion } from "./slices.ts";
 
 export const ROOT = resolve(import.meta.dirname, "..", "..");
 export const REPO_MAP_JSON = join("docs", "architecture", "repo-map.json");
@@ -51,6 +52,9 @@ export interface RepoPackage {
   hasTests: boolean;
   adopted: boolean;
   adoptedAt?: string;
+  /** Domain, layer or shared infrastructure – a layer package is not a domain slice. */
+  role?: PackageRole;
+  roleReasons?: string[];
   /** Nx project name when it differs from the package name. */
   projectName?: string;
 }
@@ -66,6 +70,8 @@ export interface RepoMap {
   tooling: Tooling;
   packages: RepoPackage[];
   ranking: RankedPackage[];
+  /** Concept clusters by shared stem/table – a suggestion for layered repositories, not a verdict. */
+  slices?: SliceSuggestion[];
   /** Optional enrichment from the build tool; the manifest graph stays the source of truth. */
   toolGraph?: ToolGraph;
 }
@@ -73,6 +79,7 @@ export interface RepoMap {
 export interface SliceProposal {
   domain?: RepoPackage;
   library?: RepoPackage;
+  cluster?: SliceSuggestion;
 }
 
 type Json = Record<string, unknown>;
@@ -612,8 +619,20 @@ export function scanRepo(root: string, options: { toolGraph?: boolean } = {}): R
   for (const pkg of packages) pkg.consumers.sort();
   packages.sort((a, b) => a.path.localeCompare(b.path));
 
+  // A layered repository needs concept slices: generic packages such as services/ or utils/ host many concepts
+  // and must not be proposed as a domain. The scan is shared by the role assignment and the clustering.
+  const files = sourceFiles(root);
+  const roles = classifyPackageRoles(root, packages, files);
+  for (const pkg of packages) {
+    const role = roles.get(pkg.path);
+    if (!role) continue;
+    pkg.role = role.role;
+    pkg.roleReasons = role.reasons;
+  }
+
   const ranking = rankPackages(root, packages);
-  const map: RepoMap = { version: 1, tooling, packages, ranking };
+  const slices = clusterSlices(root, packages, files);
+  const map: RepoMap = { version: 1, tooling, packages, ranking, slices };
   // Enrichment only. The manifest graph remains the source of truth, so the map stays usable without the
   // build tool: Turbo exposes a task graph, Nx a project graph, Bazel its BUILD deps.
   if (options.toolGraph !== false && tooling.kind !== "none") {
@@ -654,7 +673,9 @@ export function rankPackages(root: string, packages: RepoPackage[]): RankedPacka
   return packages
     .map((pkg) => {
       const changes = churn.get(pkg.name) ?? 0;
-      const score = 0.55 * (changes / maxChurn) + 0.3 * (pkg.consumers.length / maxConsumers) + 0.15 * (pkg.kind === "library" ? 0.4 : 1);
+      const base = 0.55 * (changes / maxChurn) + 0.3 * (pkg.consumers.length / maxConsumers) + 0.15 * (pkg.kind === "library" ? 0.4 : 1);
+      // A layer package can have churn and fan-in, but it is not a domain: keep it visible, rank it low.
+      const score = pkg.role === "layer" ? base * 0.15 : base;
       const reasons: string[] = [];
       if (changes) reasons.push(`${changes} changed file${changes === 1 ? "" : "s"} in recent history`);
       if (pkg.consumers.length) {
@@ -662,6 +683,8 @@ export function rankPackages(root: string, packages: RepoPackage[]): RankedPacka
         reasons.push(`${n} package${n === 1 ? "" : "s"} ${n === 1 ? "depends" : "depend"} on it`);
       }
       if (pkg.kind !== "package") reasons.push(pkg.kind === "library" ? "shared library" : pkg.kind);
+      if (pkg.role === "layer") reasons.push("layer package – hosts many concepts, not a domain slice");
+      if (pkg.role === "shared") reasons.push("shared infrastructure – not a domain slice");
       if (!reasons.length) reasons.push("no churn or consumers recorded");
       return { path: pkg.path, score: Math.round(score * 100) / 100, reasons };
     })
@@ -671,15 +694,21 @@ export function rankPackages(root: string, packages: RepoPackage[]): RankedPacka
 export function proposeSlices(map: RepoMap): SliceProposal {
   const byPath = new Map(map.packages.map((p) => [p.path, p]));
   const ranked = map.ranking.map((r) => byPath.get(r.path)).filter((p): p is RepoPackage => p !== undefined);
-  const domain = ranked.find((p) => p.kind === "app" || p.kind === "service") ?? ranked.find((p) => p.kind !== "library") ?? ranked[0];
-  if (!domain) return {};
+  const domainCandidates = ranked.filter((p) => p.role !== "layer");
+  const domain =
+    domainCandidates.find((p) => p.kind === "app" || p.kind === "service") ??
+    domainCandidates.find((p) => p.kind !== "library") ??
+    domainCandidates[0];
+
+  const cluster = map.slices?.find((slice) => !slice.adopted);
+  if (!domain) return cluster ? { cluster } : {};
 
   const libs = domain.internalDeps
     .map((name) => map.packages.find((p) => p.name === name))
     .filter((p): p is RepoPackage => p !== undefined && p.kind === "library")
     .sort((a, b) => b.consumers.length - a.consumers.length);
   const library = libs[0] ?? ranked.find((p) => p.kind === "library" && p.name !== domain.name);
-  return { domain, library };
+  return { domain, library, cluster };
 }
 
 // --------------------------------------------------------------------------
@@ -806,19 +835,63 @@ export function renderRepoMapMarkdown(map: RepoMap): string {
     "",
     "## Packages",
     "",
-    "| Package | Path | Kind | Language | Depends on | Used by | Adopted |",
-    "|---|---|---|---|---|---|---|",
+    "| Package | Path | Kind | Role | Language | Depends on | Used by | Adopted |",
+    "|---|---|---|---|---|---|---|---|",
   ];
 
   for (const pkg of [...map.packages].sort((a, b) => a.path.localeCompare(b.path))) {
     out.push(
-      `| ${tableCell(pkg.name)} | \`${pkg.path}\` | ${pkg.kind} | ${pkg.language} | ` +
+      `| ${tableCell(pkg.name)} | \`${pkg.path}\` | ${pkg.kind} | ${pkg.role ?? "–"} | ${pkg.language} | ` +
         `${pkg.internalDeps.length ? pkg.internalDeps.map((d) => `\`${d}\``).join(", ") : "–"} | ` +
         `${pkg.consumers.length ? pkg.consumers.map((d) => `\`${d}\``).join(", ") : "–"} | ` +
         `${pkg.adopted ? "yes" : "–"} |`,
     );
   }
   out.push("");
+
+  const layers = map.packages.filter((pkg) => pkg.role === "layer");
+  if (layers.length) {
+    out.push(
+      "## Layer packages",
+      "",
+      "These packages are layers of the application, not domain slices. Their concepts cut across them.",
+      "",
+      "| Package | Path | Why |",
+      "|---|---|---|",
+    );
+    for (const pkg of layers) {
+      out.push(`| ${tableCell(pkg.name)} | \`${pkg.path}\` | ${tableCell((pkg.roleReasons ?? []).join("; "))} |`);
+    }
+    out.push("");
+  }
+
+  if (map.slices?.length) {
+    out.push(
+      "## Slice suggestions (shared concepts)",
+      "",
+      "Files that share a concept stem or a table across layers. These are suggestions – confirm the scope with the user.",
+      "",
+      "| Concept | Layers | Files | Tables | Why | Adopted |",
+      "|---|---|---|---|---|---|",
+    );
+    for (const slice of map.slices) {
+      out.push(
+        `| ${slice.name} | ${slice.layers.join(", ") || "–"} | ${slice.files.length} | ` +
+          `${slice.tables.map((t) => `\`${t}\``).join(", ") || "–"} | ${tableCell(slice.reasons.join("; "))} | ` +
+          `${slice.adopted ? "yes" : "–"} |`,
+      );
+    }
+    out.push("");
+    out.push(
+      "Adopt a concept slice with:",
+      "",
+      "```bash",
+      "node .claude/skills/adopt/scripts/slice.ts --cluster <name>",
+      "node .claude/skills/adopt/scripts/repo-map.ts --adopt-slice <name>",
+      "```",
+      "",
+    );
+  }
 
   const edges = map.packages.flatMap((pkg) => pkg.internalDeps.map((dep) => [pkg, dep] as const));
   if (edges.length) {
@@ -871,12 +944,23 @@ export function renderRepoMapMarkdown(map: RepoMap): string {
   });
   out.push("");
 
-  const { domain, library } = proposeSlices(map);
-  if (domain) {
-    const label = domain.path === "." ? "root package" : `\`${domain.path}\``;
-    out.push("## Suggested first slice", "", `- **Domain:** ${label} (${domain.name})`);
-    if (library) out.push(`- **Shared library:** \`${library.path}\` (${library.name})`);
-    out.push("", "Adopt one domain and at most one shared library per session. Then mark the slice adopted:", "", "```bash", `node .claude/skills/adopt/scripts/repo-map.ts --adopt ${domain.path}`, "```", "");
+  const { domain, library, cluster } = proposeSlices(map);
+  if (domain || cluster) {
+    out.push("## Suggested first slice", "");
+    if (cluster) {
+      out.push(`- **Concept:** \`${cluster.name}\` – ${cluster.layers.join(", ") || "one layer"} (${cluster.files.length} file(s))`);
+      out.push(`  Start with \`node .claude/skills/adopt/scripts/slice.ts --cluster ${cluster.name}\`.`);
+    }
+    if (domain) {
+      const label = domain.path === "." ? "root package" : `\`${domain.path}\``;
+      out.push(`- **Package:** ${label} (${domain.name})`);
+      if (library) out.push(`- **Shared library:** \`${library.path}\` (${library.name})`);
+    }
+    out.push("", "Adopt one concept or domain plus at most one shared library per session. Then mark it adopted:");
+    out.push("", "```bash");
+    if (cluster) out.push(`node .claude/skills/adopt/scripts/repo-map.ts --adopt-slice ${cluster.name}`);
+    if (domain) out.push(`node .claude/skills/adopt/scripts/repo-map.ts --adopt ${domain.path}`);
+    out.push("```", "");
   }
   return out.join("\n");
 }
@@ -904,15 +988,26 @@ export function rootBlock(map: RepoMap, root = resolve(import.meta.dirname, ".."
     lines.push(`- **Layout:** ${groupsList.slice(0, 8).map((g) => `\`${g.dir}/\` (${g.total})`).join(", ")}`);
   }
   lines.push("- **Detail:** `docs/architecture/repo-map.md` – package list, dependency edges, consumers, adoption ranking.");
-  if (adopted.length) {
+  const openSlices = (map.slices ?? []).filter((slice) => !slice.adopted).slice(0, 5);
+  if (openSlices.length) {
+    lines.push(
+      `- **Concept slices:** ${openSlices.map((slice) => `\`${slice.name}\` (${slice.layers.join(", ") || "one layer"})`).join(", ")}` +
+        " – candidates for `/adopt`, not confirmed domains.",
+    );
+  }
+  const adoptedSlices = (map.slices ?? []).filter((slice) => slice.adopted);
+  if (adopted.length || adoptedSlices.length) {
+    const labels = [
+      ...adopted.map((p) => (p.path === "." ? "root package" : `\`${p.path}\``)),
+      ...adoptedSlices.map((slice) => `concept \`${slice.name}\``),
+    ];
     const rest = map.packages.length - adopted.length;
-    const labels = adopted.map((p) => (p.path === "." ? "root package" : `\`${p.path}\``));
     lines.push(
       `- **Adopted slices:** ${labels.join(", ")}` +
-        (rest ? `. Everything else is **not adopted**: run \`/adopt <path>\` before inferring domain there.` : "."),
+        (rest ? ". Everything else is **not adopted**: run `/adopt` before inferring domain there." : "."),
     );
   } else {
-    lines.push("- **No package is adopted yet.** Run `/adopt` before inferring domain from code.");
+    lines.push("- **No slice is adopted yet.** Run `/adopt` before inferring domain from code.");
   }
   lines.push("", "## Commands", "", "| Scope | Command |", "|---|---|");
 
@@ -1173,12 +1268,41 @@ export function markAdopted(root: string, path: string, date = new Date().toISOS
   return map;
 }
 
+export function markSliceAdopted(root: string, name: string, date = new Date().toISOString().slice(0, 10)): RepoMap {
+  const map = readRepoMap(root);
+  if (!map) throw new Error(`no ${REPO_MAP_JSON} – run repo-map.ts first`);
+  const slices = map.slices ?? (map.slices = []);
+  let slice = slices.find((entry) => entry.name === name);
+  if (!slice) {
+    // An ad-hoc scope (glob, route, table, event) has no generated cluster; keep it as an explicit adoption.
+    slice = {
+      name,
+      terms: [],
+      tables: [],
+      files: [],
+      packages: [],
+      layers: [],
+      score: 0,
+      reasons: ["marked adopted manually"],
+    };
+    slices.push(slice);
+  }
+  slice.adopted = true;
+  slice.adoptedAt = date;
+  writeRepoMap(root, map);
+  writeRootBlock(root, map);
+  return map;
+}
+
 /** Stable view for staleness checks: generated docs and ranking may change with history. */
 export function stableMap(map: RepoMap): string {
   const packages = [...map.packages]
     .sort((a, b) => a.path.localeCompare(b.path))
     .map(({ adopted: _adopted, adoptedAt: _adoptedAt, consumers: _consumers, ...rest }) => rest);
-  return JSON.stringify({ version: map.version, tooling: map.tooling, packages }, null, 2);
+  const slices = [...(map.slices ?? [])]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(({ adopted: _adopted, adoptedAt: _adoptedAt, ...rest }) => rest);
+  return JSON.stringify({ version: map.version, tooling: map.tooling, packages, slices }, null, 2);
 }
 
 export function findPackage(map: RepoMap, path: string): RepoPackage | undefined {

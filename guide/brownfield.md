@@ -9,6 +9,9 @@ npx kataster init --brownfield
 /adopt                      # map the repository, then choose a slice
 /adopt apps/billing         # adopt one package
 /adopt libs/shared-kernel   # adopt a shared library
+/adopt --cluster order      # adopt a concept across api/, services/, repositories/
+/adopt --table orders       # start from a table and resolve the layers behind it
+/adopt --route "POST /orders"  # start from an entry point
 ```
 
 ## Adopt in slices, not in one pass
@@ -20,14 +23,20 @@ A monorepo with eighty packages cannot be understood in one session. `/adopt` th
 2. **One slice** – one domain plus at most one shared library. Deep evidence, grilling, package docs, checks.
    Then the next slice in a later session.
 
-The map is generated from manifests and git history:
+The map is generated from manifests, source files and git history:
 
-- `docs/architecture/repo-map.json` – packages, paths, kinds, internal dependencies, consumers, adoption ranking
+- `docs/architecture/repo-map.json` – packages, paths, kinds, roles, internal dependencies, consumers, adoption
+  ranking, concept-slice suggestions
 - `docs/architecture/repo-map.md` – the same as a readable map, plus dependency edges and a suggested first slice
 - the **repository block in `AGENTS.md`** – tooling, layout, commands, adopted slices
 - `.claude/project.json` → `repo.tooling` – Nx, Turborepo, Bazel, pnpm/npm/yarn workspaces, Go, Cargo, Gradle, Maven
 
 The map is facts, not domain. It says where code lives, never what a word means.
+
+In a layered repository (`api/`, `services/`, `repositories/`, `utils/`) a package is not a domain. The map marks
+generic packages as **layer packages** and clusters files by shared concept stems and tables. A domain such as
+“order” shows up as an `order` slice across all layers; `slice.ts` resolves the candidate files from a cluster, a
+table, a route, an event ID, a glob or a term. The resolver is evidence – you confirm the scope.
 
 ## What `/adopt` does
 
@@ -56,18 +65,26 @@ A monorepo gets three lenses:
 A small repository without monorepo tooling gets the five classic lenses: structure and stack, domain language,
 data and integrations, behaviour and tests, history and decisions.
 
+For a concept slice, the analysts receive the confirmed file list from `slice.ts`, not only a package path. They
+report facts inside that scope; widening the slice is the user's decision, not theirs.
+
 Each analyst returns facts with `path:line`, candidate vocabulary, candidate events/commands/read models,
 contradictions, and questions with a recommended answer. Confidence is `high`, `medium` or `low`.
 
 ### 4. Drafts the slice
 
 - `CONTEXT.md` – the slice's terms, competing spellings under `_Avoid_`
-- `docs/domain/events.yaml` – 10–25 candidate events, commands, actors, read models, flows, hotspots
-- `docs/domain/context-map.md`, `docs/architecture/data-model.md` (as-is)
+- `docs/domain/events.yaml` – 10–25 candidate events, commands, actors, read models, flows, hotspots. Each
+  aggregate is `as-is` with evidence (table, service method, path) or `unresolved` with an open hotspot – never
+  an invented `target`
+- `docs/domain/context-map.as-is.md` (recovered boundaries, with evidence) and
+  `docs/architecture/data-model.md` (as-is). The target map `docs/domain/context-map.md` is read, never written
+  here; if it does not exist yet, the gap register says “target not decided”.
 - `docs/engineering/conventions.md` – how the code actually works today, including the monorepo tooling
 - `docs/adr/` – de-facto decisions worth recording (`status: proposed`)
-- **package docs** – `<package>/AGENTS.md` plus `<package>/CLAUDE.md`, written by
-  `node .claude/skills/adopt/scripts/package-doc.ts <path>`
+- **domain docs, by scope** – a real domain package gets `<package>/AGENTS.md` plus `<package>/CLAUDE.md` from
+  `package-doc.ts <path>`; a cross-cutting concept slice gets `.claude/rules/<context>.md` with `paths:` from
+  `slice-doc.ts <slug> --context BC-… --paths "…"`. One mechanism per scope, never both.
 
 Everything uncertain is marked. The draft is a proposal, not a verdict.
 
@@ -92,19 +109,25 @@ baseline of existing violations; only new violations fail. A hook that is red on
 `/adopt` may add characterization tests and tooling. It never changes production code, and it never writes a test
 that fails on existing behaviour – that would be a story.
 
+The same net carries into `/implement`: `characterize.ts --story ST-NNN` names the affected source files and the
+tests it can find. A path with no test for the behaviour that is about to change gets a characterization test
+first – current behaviour pinned, green on unchanged code, committed separately, then the story's red → green loop.
+If the current behaviour contradicts the story, the story goes back to `review`; the test is not bent to fit.
+
 ### 7. Records the gap – stories only on request
 
 | Class | Default |
 |---|---|
-| Exists and is intended | Documentation (data model, context map) – no action |
+| Exists and is intended | Documentation (data model, as-is context map) – no action |
 | Exists but contradicts the model | Candidate in the gap register |
 | Missing | Candidate in the gap register |
 | Dead | Candidate: removal or an explicit "leave it" |
 
-**The first adoption pass creates no stories.** It records the gap in `docs/domain/adoption-report.md` (and open
-questions in `OPEN_QUESTIONS.md`), so the model can be reviewed before anyone commits to work. Only
-`/adopt <scope> --stories` (or an explicit "turn these into stories") turns the selected gaps into stories in the
-main session (spec engineer, spec linter gate).
+**The first adoption pass creates no stories.** It records the gap in `docs/domain/adoption-report.md` and
+`docs/domain/gap-register.md` (one generated row per `as-is`/`unresolved` aggregate, with the as-is and target
+context links), and open questions in `OPEN_QUESTIONS.md`, so the model can be reviewed before anyone commits to
+work. Only `/adopt <scope> --stories` (or an explicit "turn these into stories") turns the selected gaps into
+stories in the main session (spec engineer, spec linter gate).
 
 **Behaviour that already works does not become a story.** That turns the backlog into a description of the past.
 
@@ -114,11 +137,14 @@ main session (spec engineer, spec linter gate).
 and checks, gaps, what was deliberately left alone, open hotspots, next slice.
 
 ```bash
+# a real domain package
 node .claude/skills/adopt/scripts/repo-map.ts --adopt apps/billing
+# a concept slice across layers
+node .claude/skills/adopt/scripts/repo-map.ts --adopt-slice order
 ```
 
 The next session sees the progress in `AGENTS.md` and the map, and starts the next slice with
-`/adopt <path>`.
+`/adopt <scope>`.
 
 ## What lives where
 
@@ -134,6 +160,9 @@ The next session sees the progress in `AGENTS.md` and the map, and starts the ne
 | `docs/engineering/checks.yaml` | on check | what runs at edit time and at Stop/CI |
 | `docs/architecture/repo-map.md` | on demand | generated map: packages, edges, consumers, ranking |
 | `CONTEXT.md` | every session | the domain language |
+| `docs/domain/context-map.md` | on demand | **target** contexts and relationships |
+| `docs/domain/context-map.as-is.md` | on demand | **as-is** snapshot recovered by `/adopt`, with evidence |
+| `docs/domain/gap-register.md` | on demand | generated as-is ↔ target rows and the user's decisions |
 
 Nested `AGENTS.md` is loaded on demand by OpenCode; Claude Code loads the nested `CLAUDE.md` when it reads or
 edits a file there. That is why every package gets both files.

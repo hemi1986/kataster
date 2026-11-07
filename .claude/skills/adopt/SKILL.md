@@ -2,7 +2,7 @@
 name: adopt
 description: Brownfield entry point – maps the repository, adopts it in slices (one domain plus at most one shared library), drafts the domain model with evidence, grills the user, documents each package where it lives and records the gap; it derives stories only when asked (--stories). Use when the workflow is dropped into a repository that already has code.
 disable-model-invocation: true
-argument-hint: "[scope, e.g. 'apps/billing' or 'the order process' – empty = map the repository and choose a slice; add --stories to derive stories now]"
+argument-hint: "[package path or concept scope (--paths/--route/--table/--event/--cluster/term) – empty = map the repository and choose a slice; add --stories to derive stories now]"
 ---
 
 # Adopt an Existing Repository
@@ -20,10 +20,12 @@ kebab-case slug for the adoption (`adoption-<scope>`) for the report file.
 1. Read `.claude/project.json`. If it is missing, tell the user to run `npx kataster init` first and stop.
 2. If the repository has no code yet, this is the wrong command: use `/bootstrap`.
 3. Read what already exists, before analysing anything: `CONTEXT.md`, `docs/product/vision.md`,
-   `docs/domain/events.yaml`, `docs/domain/context-map.md`, `docs/architecture/data-model.md`,
-   `docs/architecture/repo-map.md`, `docs/engineering/conventions.md`, `docs/adr/`, `README*`, existing `docs/`
-   and any `AGENTS.md`/`CLAUDE.md`. Existing documentation is **primary evidence** – it outranks your inference
-   from code. Contradictions between docs and code are findings, not something to resolve silently.
+   `docs/domain/events.yaml`, `docs/domain/context-map.md` (**target**), `docs/domain/context-map.as-is.md`
+   (**as-is**), `docs/architecture/data-model.md`, `docs/architecture/repo-map.md`,
+   `docs/engineering/conventions.md`, `docs/adr/`, `README*`, existing `docs/` and any `AGENTS.md`/`CLAUDE.md`.
+   Existing documentation is **primary evidence** – it outranks your inference from code. The target map is
+   read-only here: it says where the project wants to go, not what the code does. Contradictions between docs and
+   code are findings, not something to resolve silently.
 
 ## Phase 0 – Repository map (deterministic, no questions)
 
@@ -33,10 +35,10 @@ Run:
 node .claude/skills/adopt/scripts/repo-map.ts
 ```
 
-It scans manifests and git history and writes:
+It scans manifests, source files and git history and writes:
 
-- `docs/architecture/repo-map.json` – packages, paths, kinds, internal dependencies, consumers, adoption ranking,
-  and the build tool's own graph when it answers (Turbo, Nx, Bazel)
+- `docs/architecture/repo-map.json` – packages, paths, kinds, roles, internal dependencies, consumers, adoption
+  ranking, concept-slice suggestions, and the build tool's own graph when it answers (Turbo, Nx, Bazel)
 - `docs/architecture/repo-map.md` – the same as a readable map (never edit it by hand)
 - the generated repository block in `AGENTS.md` – tooling, layout, commands, adopted slices
 - `.claude/project.json` → `repo.tooling` – Nx, Turborepo, Bazel, pnpm/npm/yarn workspaces, Go, Cargo, Gradle, Maven
@@ -44,20 +46,47 @@ It scans manifests and git history and writes:
 Read the map yourself. **Do not hand-scan the repository for packages**; if the map is stale, run it again.
 The map is facts, not domain: it says where code lives and what depends on what, never what a word means.
 
+Pay attention to two readings the map adds for layered repositories:
+
+- **Layer packages** – generic names such as `services`, `repositories` or `utils` that host many concepts. They
+  are layers, not domains; do not adopt “the services package” as if it were one bounded context.
+- **Concept slices** – clusters that share a file stem or a table across layers (`ordersController`,
+  `orderService`, `orderRepository`, `orders` table). They are slice *suggestions*, not confirmed boundaries.
+
 ## Phase 1 – Choose the slice (one round, at most three questions)
 
-The map suggests a first slice. Ask, each with a recommended answer:
+The scope is either a package path, a **concept scope** or a mix. A concept scope can be:
 
-1. **Slice**: the suggested domain plus its most-used shared library, or a different one? Recommended: the
-   suggestion from `repo-map.md` – it weighs recent churn, fan-in and kind, not size.
+- a glob set: `--paths "src/api/order*,src/services/order*,db/migrations/*order*"`
+- an entry point: `--route "POST /orders"`, `--table orders`, `--event EVT-OrderPlaced`
+- a suggestion from the map: `--cluster order`
+- a free term: `--term order`
+
+Resolve a non-package scope deterministically before asking:
+
+```bash
+node .claude/skills/adopt/scripts/slice.ts --cluster order
+node .claude/skills/adopt/scripts/slice.ts --table orders
+node .claude/skills/adopt/scripts/slice.ts --route "POST /orders"
+```
+
+The resolver follows imports in both directions, adds same-concept files from other layers and prints the
+candidate files with reasons. **It is evidence, not a verdict** – show the candidates and let the user confirm the
+scope. If the resolver finds nothing, widen it with `--paths` or `--term`; do not invent a boundary.
+
+Ask, each with a recommended answer:
+
+1. **Slice**: the suggested concept or domain plus its most-used shared library, or a different one? Recommended:
+   the suggestion from `repo-map.md` – in a layered repository, prefer the concept slice over the package.
 2. **Intent**: a domain model for future work, a map for onboarding, or a backlog for a rewrite? Recommended:
    the domain model first; the other two follow from it.
 3. **Language**: confirm `languages.ui` and `languages.artifacts` from the profile. Recommended: what the code
    and UI already use.
 
-Hard rule: **one domain plus at most one shared library per session.** A simple repository without monorepo
-tooling is one slice – then the whole repository is in scope. Never "the whole monorepo"; a shallow map of 80
-packages is worse than a confirmed model of two.
+Hard rule: **one concept or domain plus at most one shared library per session.** The scope may cross packages
+and layers – a domain is not a package. A simple repository without monorepo tooling is one slice only when its
+code is not layered; otherwise use the resolver. Never "the whole monorepo"; a shallow map of 80 packages is worse
+than a confirmed model of two.
 
 Create `docs/domain/adoption-report.md` with the answers under `## Scope`; fill the rest as you go. If earlier
 slices are already adopted, name the next one and what changed since it was adopted (`git log --since=<date>`).
@@ -67,8 +96,9 @@ slices are already adopted, name the next one and what changed since it was adop
 Call the `skill` tool for `grilling`, `domain-model` and `architect` first: grilling sets how you ask,
 domain-model sets what you are looking for, architect decides what becomes an ADR.
 
-Dispatch `repo-analyst` subagents **in one message**, each with the slice path, the repository map path and one
-lens. They are read-only.
+Dispatch `repo-analyst` subagents **in one message**, each with the confirmed scope (the package path or the
+resolved file list), the repository map path and one lens. They are read-only. For a concept slice, say which
+files are in scope and which layer they belong to; do not let an analyst widen the scope on its own.
 
 - **Monorepo / several packages**: three analysts.
   | Lens | What it looks for |
@@ -89,25 +119,46 @@ Merge the reports into one picture. Write the artifacts **as a draft**, every un
 - **`CONTEXT.md`** – only the slice's terms, grouped by guessed bounded context, competing spellings under
   `_Avoid_`, `[OPEN]` where the meaning is unclear. Do not touch terms of other slices.
 - **`docs/domain/events.yaml`** – 10–25 candidate events/commands/actors/read models/policies/flows for this
-  slice. Every uncertainty becomes a hotspot (`HS-n`, `status: open`).
-- **`docs/domain/context-map.md`** – the boundaries the module structure suggests, marked as a proposal.
+  slice. Every uncertainty becomes a hotspot (`HS-n`, `status: open`). Every aggregate carries a status:
+  `as-is` with `evidence` (table, service method, path) when the code shows a factual consistency boundary, or
+  `unresolved` plus an open hotspot when the boundary is unclear. **Never `target` for a boundary inferred from
+  code** – a target is a decision the user makes, not a reading of the repository.
+- **`docs/domain/context-map.as-is.md`** – the boundaries the module structure actually shows, with evidence.
+  Create it from `.claude/skills/adopt/templates/context-map.as-is.md` on the first slice (replace
+  `{{project}}`, `{{date}}` and `{{commit}}`) and add one `### BC-… – <name>` section per recovered context
+  (the gap register links those headings). **Never write
+  `docs/domain/context-map.md`** – that is the target map, owned by `/bootstrap`, `/shape`, `/feature`,
+  `/event-storming` and `/improve-codebase-architecture`. If no target exists yet, leave it absent; the gap
+  register shows “target not decided”.
 - **`docs/architecture/data-model.md`** – the **as-is** model for the slice, derived from schema and code.
 - **`docs/engineering/conventions.md`** – fill what the slice actually does: module layout, how a command runs,
   read models, "now", texts, test data, seam catalog. Include how the monorepo tooling is used.
 - **`docs/product/vision.md`** – only if missing or empty, reconstruct and mark `[OPEN]`.
 - **`docs/adr/`** – de-facto decisions worth recording, `status: proposed`. Only the user accepts.
-- **Package docs** – for the domain and the shared library (in a monorepo):
-  ```bash
-  node .claude/skills/adopt/scripts/package-doc.ts apps/billing
-  node .claude/skills/adopt/scripts/package-doc.ts libs/shared-kernel
-  ```
-  A single-package repository has no package file: its root `AGENTS.md` is the package doc (`package-doc.ts .`
-  deliberately refuses). The script writes `<package>/AGENTS.md` (source of truth) and `<package>/CLAUDE.md`
-  (`@AGENTS.md`, for Claude Code's on-demand nested loading). It generates the facts block; **you** fill the prose
-  during the grilling:
+- **Domain docs** – choose the mechanism by scope, not by habit:
+  - **Real domain package** (the code lives in one package): write `<package>/AGENTS.md` + `<package>/CLAUDE.md`
+    with `package-doc.ts`:
+    ```bash
+    node .claude/skills/adopt/scripts/package-doc.ts apps/billing
+    node .claude/skills/adopt/scripts/package-doc.ts libs/shared-kernel
+    ```
+  - **Cross-cutting concept slice** (the domain is spread over `api/`, `services/`, `repositories/`, …): write a
+    path-scoped document under `.claude/rules/` instead, so both harnesses load it when a matching file is
+    touched:
+    ```bash
+    node .claude/skills/adopt/scripts/slice-doc.ts order \
+      --context BC-Order \
+      --paths "src/api/order*,src/services/order*,src/repositories/order*" \
+      --title "Order"
+    ```
+    Do **not** also write a package `AGENTS.md` for the same concept – one mechanism per scope.
+  A single-package repository without layers has no package file: its root `AGENTS.md` is the package doc
+  (`package-doc.ts .` deliberately refuses). The package script writes `<package>/AGENTS.md` (source of truth) and
+  `<package>/CLAUDE.md` (`@AGENTS.md`, for Claude Code's on-demand nested loading). It generates the facts block;
+  **you** fill the prose during the grilling:
   - domain/service: Purpose, Key entities, External interfaces, Typical pitfalls, Boundaries
   - shared library: Purpose, Public API, Consumers, Compatibility rules, Typical pitfalls, Boundaries
-  Keep each file under ~80 lines. This file is loaded only when someone works in that package.
+  Keep each file under ~80 lines. This file is loaded only when someone works in that package or path.
 - **Root `AGENTS.md`** – the generated block comes from the map. Below it, add only structure, commands, hard
   conventions and links. Keep at most ten bullets under `## Hard conventions`, each naming where it is enforced
   (`lint`, a test, `.claude/rules/<file>.md`, `docs/engineering/checks.yaml`) – a rule without an enforcement
@@ -138,7 +189,9 @@ skill says: numbered questions, each with a recommended answer, whole frontier p
 Questions brownfield needs, roughly in this order:
 
 1. **Terms** – one question per cluster of competing spellings, worst first.
-2. **Boundaries** – which package owns which state; where a shared library ends and a domain begins.
+2. **Boundaries** – which package owns which state; where a shared library ends and a domain begins. For every
+   aggregate: is this the factual consistency boundary (`as-is`), is it unclear (`unresolved` + hotspot), or is
+   this the boundary we want (`target`, a decision)? Prefer `as-is`/`unresolved` over an invented aggregate.
 3. **Lifecycle** – states the schema allows, transitions it does not block.
 4. **Invariants** – what the code checks only in the UI; what must always hold.
 5. **Missing behaviour** – what has no trace: never needed, or a gap?
@@ -209,6 +262,15 @@ backlog. Write the table into `docs/domain/adoption-report.md`; open questions g
 `docs/stories/OPEN_QUESTIONS.md` or a hotspot. This keeps the model reviewable without committing to work the
 user has not prioritised.
 
+Run the gap register after the grilling and before the report:
+
+```bash
+node .claude/skills/adopt/scripts/gap-register.ts
+```
+
+Every `as-is` aggregate gets a generated row with its evidence and its as-is/target context links; every
+`unresolved` aggregate gets a row that names its open hotspot. Add the decisions outside the managed block.
+
 Only when the invocation contains `--stories`, or the user explicitly asks after seeing the table:
 
 - write the stories yourself as the spec engineer (the `user-stories` skill is the method) with the **selected**
@@ -233,7 +295,8 @@ Date: YYYY-MM-DD · Commit: <sha> · Slice: <paths> · Analysts: <n> lenses
 ## Repository map (tooling, packages, why this slice)
 ## What the repository is (facts)
 ## Confirmed domain model
-- contexts, aggregates, glossary changes
+- contexts, aggregates (with status), glossary changes
+- as-is context map and the target links the gap register found
 ## Package documentation written
 - <path>/AGENTS.md + CLAUDE.md – what was confirmed and what stays [OPEN]
 ## Contradictions found and how they were resolved
@@ -248,7 +311,11 @@ Date: YYYY-MM-DD · Commit: <sha> · Slice: <paths> · Analysts: <n> lenses
 Mark the slice adopted so the next session sees the progress:
 
 ```bash
+# a real domain package
 node .claude/skills/adopt/scripts/repo-map.ts --adopt apps/billing
+
+# a concept slice across layers
+node .claude/skills/adopt/scripts/repo-map.ts --adopt-slice order
 ```
 
 Then run `node .claude/skills/event-storming/scripts/validate-events.ts` and
@@ -270,8 +337,16 @@ checks created, gap candidates (and stories only if requested), ADRs proposed. T
 
 - **Never change production code in `/adopt`.** Tests and tooling are allowed only as the safety net above.
 - **Never present an inference as a fact.** Confidence and evidence, or a hotspot.
+- **Aggregates are honest.** `as-is` needs evidence; `unresolved` needs an open hotspot; `target` is a user
+  decision. An invented aggregate is worse than an unresolved one – it makes the story look ready when it is not.
+- **Adopt writes as-is, never target.** `docs/domain/context-map.as-is.md` and the `as-is` aggregates describe
+  the repository. The target map (`docs/domain/context-map.md`) and `target` aggregates are decisions made in
+  `/bootstrap`, `/shape` or `/feature` – do not “fix” them while adopting.
 - **The user owns the language.** You may propose a better word; you may not rename the domain on your own.
-- **Adopt in slices.** One domain plus at most one shared library. Never the whole monorepo in one pass.
+- **Slice by concept, not by package.** In a layered repository a domain runs through `api/`, `services/` and
+  `repositories/`. Use the concept clusters and the resolver; never treat a generic `services`/`utils` package as
+  a domain just because it has a manifest.
+- **Adopt in slices.** One concept or domain plus at most one shared library. Never the whole monorepo in one pass.
 - **The root `AGENTS.md` stays free of domain.** Structure, commands, hard conventions and links only.
 - **Package docs are short and on demand.** `<package>/AGENTS.md` + `<package>/CLAUDE.md`, under ~80 lines.
 - **Directory docs before glob rules.** `.claude/rules/` is for patterns a directory cannot express. Both

@@ -11,6 +11,8 @@ Workflow: `draft → review → ready-for-human-review → ready → in-progress
   Gherkin `Given/When/Then` and the scenario limit – deterministically, no LLM.
 - Green → `ready-for-human-review`; **the user approves `ready`**. `/implement` only picks up `ready`.
 - **1-command rule:** one `type: domain` story = one command + its events on one aggregate, at most 4 scenarios.
+- An aggregate with `status: unresolved` blocks the story at `ready-for-human-review`; settle the boundary and
+  its hotspot in grilling first. A missing status means `target`; `as-is` is allowed.
 - **Fast lane:** `type: chore` or `type: task` for UI tweaks, refactorings, dependencies and setup – no Gherkin
   matching, no formal reviews. `type: tech-task` keeps its checklist; `type: spike` is a timeboxed question.
 - `ui: true` marks a story with a frontend part; it triggers the on-demand UX utility, never a gate.

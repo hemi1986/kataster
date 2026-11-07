@@ -24,12 +24,18 @@ aggregates:
   - id: AGG-Bike
     name: Bike
     context: BC-Rental
+    status: target
     invariants:
       - A bike can only be rented out once at a time
       - A bike marked as damaged cannot be rented out
   - id: AGG-RepairOrder
     name: Repair order
     context: BC-Workshop
+    # status: as-is          # factual boundary recovered from code; add evidence below
+    # evidence:
+    #   - repair_orders table (db/schema.sql:40)
+    #   - RepairOrderService.open() (src/services/repairOrderService.ts:22)
+    # status: unresolved    # boundary unclear; add an open hotspot with refs: [AGG-RepairOrder]
 
 events:
   - id: EVT-BikeRented

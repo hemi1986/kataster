@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.0 – 2026-11-07
+
+- **Honest aggregate status.** Aggregates in `docs/domain/events.yaml` can be `target` (the default when the field
+  is missing), `as-is` (a factual brownfield boundary, with `evidence`) or `unresolved` (the boundary is unclear
+  and needs an open hotspot). The validator rejects `as-is` without evidence; the spec linter blocks a story on an
+  `unresolved` aggregate from leaving `review`. `/adopt` and `domain-model` prefer `as-is`/`unresolved` over an
+  invented aggregate.
+- **Gap register.** `docs/domain/gap-register.md` gets one generated row per `as-is`/`unresolved` aggregate,
+  linking the aggregate and both context maps. The managed block is refreshed by
+  `node .claude/skills/adopt/scripts/gap-register.ts`; decisions live outside it.
+- **Slices by concept, not by package.** The repository map marks generic layer packages (`services`,
+  `repositories`, `utils`) instead of proposing them as domains, and clusters files by shared concept stems and
+  tables. `/adopt` accepts a package path, `--paths`, `--route`, `--table`, `--event`, `--cluster` or a term;
+  `slice.ts` resolves the candidate files across layers and the user confirms the scope. A cross-cutting slice
+  documents its domain in `.claude/rules/<context>.md` with `paths:`; `<package>/AGENTS.md` stays for real
+  domain packages.
+- **Characterization tests before test-first.** `characterize.ts --story ST-NNN` (or `--changed`/`--base`) names
+  the affected source files and the tests it finds. In the domain lane, an affected path with no test for the
+  behaviour about to change gets a characterization test first: current behaviour pinned, green on unchanged code,
+  committed separately, then the story tests. A discrepancy is a finding – the story goes back to `review`, never
+  the test to the expected value. The fast lane skips this except for an explicit refactoring.
+- **As-is and target are separate.** `docs/domain/context-map.md` is the target map; `/adopt` writes only
+  `docs/domain/context-map.as-is.md` and links both through the gap register. `/shape` and
+  `/improve-codebase-architecture` write the target map; `/bootstrap`, `/feature` and `domain-architect` do the
+  same. Existing projects keep their `context-map.md` as the target – no file is moved or renamed.
+
 ## 0.4.0 – 2026-11-03
 
 - **Spec-driven instead of corporate roleplay.** The `product-owner`, `requirements-engineer` and `lead-dev`

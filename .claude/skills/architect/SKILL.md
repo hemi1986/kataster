@@ -21,9 +21,14 @@ Domain language (the glossary in `CONTEXT.md`), bounded contexts, aggregates and
     ├── architecture/
     │   └── data-model.md       ← logical data model (domain-model skill)
     └── domain/
-        ├── context-map.md
+        ├── context-map.md        ← target map
+        ├── context-map.as-is.md  ← as-is snapshot, written only by /adopt
+        ├── gap-register.md       ← as-is ↔ target gaps (generated rows + decisions)
         └── events.yaml
 ```
+
+`docs/domain/context-map.md` is the target; `context-map.as-is.md` is the snapshot recovered by `/adopt`. Do not
+write the as-is map from an architecture session – a target decision belongs in the target map.
 
 Once code exists and contexts live in separate modules, context-specific decisions may move next to the code (`src/<context>/docs/adr/`); system-wide decisions stay in `docs/adr/`.
 

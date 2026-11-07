@@ -74,6 +74,7 @@ run("stories + spec linter", node, [join(disc, "user-stories", "scripts", "valid
 // The map is generated; staleness is a warning (adoption may not have run yet), not a failed gate.
 run("repository map", node, [join(disc, "adopt", "scripts", "repo-map.ts"), "--check"], true);
 run("path-scoped rules", node, [join(disc, "adopt", "scripts", "rule-doc.ts"), "--check"], true);
+run("gap register", node, [join(disc, "adopt", "scripts", "gap-register.ts"), "--check"], true);
 run("project checks", node, [join(d.ROOT, ".claude", "hooks", "project-check.ts"), "--phase", "stop"]);
 run("scenario ↔ test traceability", node, [join(here, "check-scenarios.ts")]);
 run("domain ID traceability", node, [join(here, "check-commands.ts")]);

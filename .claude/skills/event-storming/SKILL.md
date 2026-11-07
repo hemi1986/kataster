@@ -12,7 +12,8 @@ Focus of this session: the arguments from the invocation (empty = big picture ac
 
 ## Preparation
 1. Call the `skill` tool for `grilling` and `domain-model`. Grilling sets how you ask questions; domain-model sets how you guard the language in `CONTEXT.md`.
-2. Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md`.
+2. Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md` (target),
+   `docs/domain/context-map.as-is.md` and `docs/domain/gap-register.md` when they exist.
 3. Format reference: `templates/events.example.yaml` in this skill folder (unrelated example domain – copy the format only, no content).
 
 ## Facilitation Rules
@@ -33,7 +34,7 @@ Focus of this session: the arguments from the invocation (empty = big picture ac
 4. **Commands & actors** – What triggers each event, and who does it? Capture external systems (`EXT-`). Business rules of the command go into `rules` – only what the command adds beyond the `invariants` of its aggregate, which are stated once, there (user, 2026-10-01).
 5. **Policies** – "Whenever <event>, then <command>". Include time-triggered ones (event with `origin: time`) and manual routines.
 6. **Read models** – What information does an actor need to trigger the command? (`fed_by`, `used_by`, `fields`)
-7. **Aggregates (proposal)** – Which rules must be protected consistently? Rough assignment of commands/events. Detailed work is done by `domain-architect`.
+7. **Aggregates (proposal)** – Which rules must be protected consistently? Rough assignment of commands/events. Detailed work is done by `domain-architect`. Every aggregate gets `status: target` in greenfield; a boundary the user cannot settle becomes `status: unresolved` with an open hotspot. When adopting existing code, the status is `as-is` (with evidence) or `unresolved`, never an invented `target`.
 8. **Bounded contexts (proposal)** – Where do language or responsibility change? Propose rough boundaries.
 
 When focusing on a single process: phases 0–6 for that process (phase 0 only for what the vision doesn't cover yet), 7–8 only if something new emerges.

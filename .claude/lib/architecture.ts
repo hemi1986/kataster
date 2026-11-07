@@ -23,7 +23,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { globToRegExp, matchesAny } from "./glob.ts";
 import { ROOT, scanRepo, readRepoMap, type RepoMap } from "./repo.ts";
+
+export { globToRegExp, matchesAny };
 
 export const BOUNDARIES_FILE = join("docs", "architecture", "boundaries.yaml");
 export const BASELINE_FILE = join("docs", "architecture", "boundaries.baseline.json");
@@ -131,39 +134,6 @@ export function relPath(root: string, path: string): string {
 export function inside(root: string, path: string): boolean {
   const r = relPath(root, path);
   return r !== "" && !r.startsWith("..") && !isAbsolute(r);
-}
-
-// --------------------------------------------------------------------------
-// Globs
-// --------------------------------------------------------------------------
-export function globToRegExp(glob: string): RegExp {
-  const pattern = toPosix(glob);
-  let out = "^";
-  for (let i = 0; i < pattern.length; i += 1) {
-    const c = pattern[i];
-    if (c === "*") {
-      if (pattern[i + 1] === "*") {
-        i += 1;
-        if (pattern[i + 1] === "/") {
-          i += 1;
-          out += "(?:.*/)?";
-        } else {
-          out += ".*";
-        }
-      } else {
-        out += "[^/]*";
-      }
-    } else if (c === "?") {
-      out += "[^/]";
-    } else {
-      out += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    }
-  }
-  return new RegExp(`${out}$`);
-}
-
-export function matchesAny(path: string, patterns: string[]): boolean {
-  return patterns.some((pattern) => globToRegExp(pattern).test(path));
 }
 
 // --------------------------------------------------------------------------

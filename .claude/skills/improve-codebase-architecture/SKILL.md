@@ -22,7 +22,9 @@ This command is _informed_ by the project's domain model and built on a shared d
 - If the user named a direction (a module, a subsystem, a pain point), take it, and skip the inference below.
 - Otherwise, walk back a good stretch of the commit history (`git log --oneline`) to find the codebase's hot spots, the files and areas that keep coming up, and let those paths pull your attention first. If the changes are scattered with no clear hot spot, widen the net.
 
-Read the project's domain glossary (`CONTEXT.md`) and any ADRs in the area you're touching first.
+Read the project's domain glossary (`CONTEXT.md`), the target context map (`docs/domain/context-map.md`), the
+as-is map (`docs/domain/context-map.as-is.md`) and any ADRs in the area you're touching first. The as-is map is
+evidence of the current boundaries; the target map is what the architecture is moving towards.
 
 Then spawn a sub-agent to walk the codebase. Don't follow rigid heuristics; explore organically and note where you experience friction:
 
@@ -67,5 +69,6 @@ Side effects happen inline as decisions crystallize; call the `skill` tool with 
 
 - **Naming a deepened module after a concept not in `CONTEXT.md`?** Add the term to `CONTEXT.md`. Create the file lazily if it doesn't exist.
 - **Sharpening a fuzzy term during the conversation?** Update `CONTEXT.md` right there.
+- **Changing a bounded-context boundary?** When the user confirms the deepening, update the **target** context map `docs/domain/context-map.md` (purpose, terms, relationships). Never edit `docs/domain/context-map.as-is.md` – that is the snapshot `/adopt` recovered from the code.
 - **User rejects the candidate with a load-bearing reason?** Offer an ADR, framed as: _"Want me to record this as an ADR so future architecture reviews don't re-suggest it?"_ Only offer when the reason would actually be needed by a future explorer to avoid re-suggesting the same thing; skip ephemeral reasons ("not worth it right now") and self-evident ones.
 - **Want to explore alternative interfaces for the deepened module?** Call the `skill` tool with `codebase-design` and use its design-it-twice parallel sub-agent pattern.

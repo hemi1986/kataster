@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -92,6 +92,36 @@ test("path-rules accepts absolute paths and the Claude tool_input shape", () => 
   assert.deepEqual(rules(dir, { paths: [absolute], cwd: dir }).map((r) => r.key), ["libs-shared"]);
   assert.deepEqual(rules(dir, { tool_input: { file_path: "libs/shared/src/index.ts" }, cwd: dir }).map((r) => r.key), ["libs-shared"]);
   assert.deepEqual(rules(dir, { paths: [join(dir, "..", "outside.ts")], cwd: dir }), []);
+});
+
+test("slice-doc writes a path-scoped concept document that path-rules can load", () => {
+  const dir = workspace();
+  const created = script(dir, "slice-doc.ts", [
+    "order",
+    "--context",
+    "BC-Order",
+    "--paths",
+    "apps/**,libs/**",
+    "--title",
+    "Order",
+  ]);
+  assert.equal(created.code, 0, created.out);
+  assert.match(created.out, /Created \.claude\/rules\/order\.md/);
+
+  const rule = readFileSync(join(dir, ".claude", "rules", "order.md"), "utf8");
+  assert.match(rule, /^---/);
+  assert.match(rule, /paths:/);
+  assert.match(rule, /- "apps\/\*\*"/);
+  assert.match(rule, /# Order \(BC-Order\)/);
+  assert.match(rule, /## As-is boundary/);
+  assert.equal(script(dir, "rule-doc.ts", ["--check"]).code, 0);
+
+  const matched = rules(dir, { paths: ["libs/shared/src/index.ts"] }).map((r) => r.key);
+  assert.ok(matched.includes("order"), matched.join(", "));
+
+  const duplicate = script(dir, "slice-doc.ts", ["order", "--paths", "libs/**"]);
+  assert.notEqual(duplicate.code, 0);
+  assert.match(duplicate.out, /already exists/);
 });
 
 test("path-rules is quiet and safe when there is nothing to match", () => {

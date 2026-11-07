@@ -39,7 +39,9 @@ Mechanically enforced by the linter for `type: domain`:
 
 - `aggregate: AGG-…` and `command: CMD-…` are required and must exist in `events.yaml`;
 - the command must belong to the stated aggregate;
-- `events` must be exactly what that command produces – no more, no fewer.
+- `events` must be exactly what that command produces – no more, no fewer;
+- the aggregate must not be `status: unresolved` once the story leaves `review` – the boundary has to be settled
+  in grilling first (a missing status means `target`, `as-is` is allowed).
 
 **At most 4 Gherkin scenarios** per domain story: one happy path and up to three edge/error cases. More means the
 story merges commands, restates a UX guideline pattern, or should be split.
@@ -110,7 +112,8 @@ The old `labels: [ui]` is still recognised as equivalent. New stories set the fl
 `ready` (the user approved it) → `in-progress` → `done`.
 
 - **The linter is the gate**: `node .claude/skills/user-stories/scripts/lint-story.ts <file>`. Only when it is green
-  does the story move to `ready-for-human-review`; there is no LLM review pass before implementation.
+  does the story move to `ready-for-human-review`; there is no LLM review pass before implementation. A warning
+  about an `unresolved` aggregate is blocking for the gate: settle the boundary and its hotspot first.
 - **`ready` is the user's decision**, not the agent's.
 - Discovery ends at `ready`. The engineering workflow (`/implement`) sets `in-progress` and `done` with
   `node .claude/skills/implement/scripts/story-status.ts`; the validation hook enforces the same rules when the file
