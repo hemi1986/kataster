@@ -14,6 +14,14 @@ Two rules make it work:
   user something you could find yourself.
 - **Do not act until the frontier is empty** and the user confirms a shared understanding.
 
+When a frontier question rests on an **external fact** – a standard, a library capability, a regulatory requirement,
+a security or privacy rule – the agent researches it before the round. The `researcher` is read-only and returns
+findings with source, tier, retrieval date and confidence; the main session writes them to
+`docs/research/<topic>.md` with an expiry. The finding is evidence, not a decision: the recommendation cites it
+(`➡️ … (RFC 9700 §2.1.1; F1 in docs/research/oauth-pkce.md)`), and only a confirmed finding becomes a testable
+criterion. A trigger is not a mandate – if the model, an ADR or a valid research file already answers it, nothing
+runs.
+
 `/grill-me` is the pure form. `/grill-with-docs` adds the glossary and ADRs. Every discovery command embeds it.
 
 ## The artifacts
@@ -31,6 +39,7 @@ Two rules make it work:
 | `docs/stories/` | The backlog. One Markdown file per story; `BACKLOG.md` is generated. With a tracker, this is the local mirror | main session as spec engineer; spec linter; `/backlog-sync` with a tracker |
 | `docs/product/vision.md` | Problem, user groups, goals, non-goals, success criteria | user |
 | `docs/product/ux-guidelines.md` | The interface yardstick, as numbered rules with date and reason | ux-designer, approved by user |
+| `docs/research/<topic>.md` | Evidence for a cross-cutting question: findings with source, tier, confidence and an expiry. Evidence, not a specification | researcher (read-only); main session writes; user confirms findings |
 | `docs/prototypes/<slug>/` | Throwaway prototypes on their own branch; only the README stays on the default branch | ux-designer; verdict in the story and the guidelines |
 
 ## Events, commands, aggregates

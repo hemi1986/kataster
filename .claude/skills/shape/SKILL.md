@@ -1,6 +1,6 @@
 ---
 name: shape
-description: Grill a large idea before it becomes features – frame the problem, decide where it belongs (existing or new bounded context, shared library), map what changes vs. what is new, slice it, and produce a rough cost range with confidence. Creates no stories; ends with a go / slice / spike / discover / park / no-go recommendation.
+description: Grill a large idea before it becomes features – frame the problem, decide where it belongs (existing or new bounded context, shared library), research external facts before placement and cost, map what changes vs. what is new, slice it, and produce a rough cost range with confidence. Creates no stories; ends with a go / slice / spike / discover / park / no-go recommendation.
 disable-model-invocation: true
 argument-hint: "<idea | ST-NNN | #issue | PROJ-123 | URL> [--dry-run]"
 ---
@@ -52,6 +52,11 @@ Also scan the **configuration and integration points** for systems that already 
 `.env.example`, `configuration.ts`, config DTOs, API clients, external ids in entities. A name that appears only
 there – a store, an ERP, a marketplace – is evidence of a system the brief must place. Report what you found and
 what it implies; do not turn a config key into an architectural decision.
+
+If the idea depends on an **external fact** – a standard, a library capability, a regulatory requirement, a
+migration path – load the `research` skill before step 3 (placement) and step 6 (cost). The finding lands in
+`docs/research/<topic>.md`. Research is evidence for the cost anchor, never the estimate, and no research runs for
+every idea.
 
 If an analogue exists (a sibling service the idea resembles), use it as evidence. If it is large and not adopted,
 delegate one `repo-analyst` lens with a clear task instead of reading all of it yourself. Its model is evidence,
@@ -143,7 +148,8 @@ Never one number. Give **scope**, **range** and **risk**, plus the basis.
 - **Confidence:** low/medium/high, and **what would raise it** (spike, prototype, measurement, talking to the
   carrier).
 - **Basis:** the counts behind the estimate (e.g. 1 new command, 1 event, 1 policy, 1 read model, 1 page, 1
-  migration, 2 packages, 1 integration).
+  migration, 2 packages, 1 integration). Research findings in `## Evidence` are an anchor for the range, never the
+  estimate itself.
 - **Analogue:** if a similar service exists, use it as the calibration anchor – modules, LOC, endpoints, entities,
   specs, and which parts are domain-specific vs. generic. Say what can be reused and what is genuinely new. The
   analogue is evidence, not a template; a copy is not automatically the right design.
@@ -182,6 +188,8 @@ promoted: ""              # feature:<slug> once slices are handed to /feature
 | Capability | Context | New/existing | Why | Confidence |
 ## Impact – change vs. build new
 | Dimension | Change | New | Evidence |
+## Evidence
+| Finding | Source | Tier | Confidence | Consequence for the brief |
 ## Slices
 1. …
 ## Rough cost
@@ -193,6 +201,7 @@ promoted: ""              # feature:<slug> once slices are handed to /feature
 ## Guardrails
 
 - The brief is a proposal. The user sets `accepted`.
+- Research findings are evidence for the cost anchor, never the estimate and never a decision on their own.
 - Do not let the estimate become a commitment. It is a range with a basis.
 - Every brief ends in a recommendation; do not use `/shape` to avoid a decision.
 - Do not turn initiatives into a shadow backlog. They have no `ready`/`done`; only stories do.

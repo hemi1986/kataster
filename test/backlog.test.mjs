@@ -205,3 +205,21 @@ test("slugs are readable and bounded", () => {
   assert.equal(slugify("Größe & Preis / 2"), "grosse-preis-2");
   assert.equal(slugify("!!!"), "story");
 });
+
+test("sources survive the GitHub and Jira round-trip", () => {
+  const withSources = {
+    ...story,
+    meta: { ...story.meta, sources: ["docs/research/order-flow.md", "https://example.com/spec"] },
+  };
+  for (const cfg of [github, jira]) {
+    const payload = renderIssue(withSources, cfg);
+    const remote = {
+      key: cfg.provider === "github" ? "42" : "PROJ-101",
+      title: payload.title,
+      body: payload.body,
+      labels: payload.labels,
+      ...(cfg.provider === "github" ? { state: "open" } : { status: "Draft" }),
+    };
+    assert.deepEqual(parseIssue(remote, cfg, { contexts: ["BC-Order"] }).meta.sources, withSources.meta.sources);
+  }
+});

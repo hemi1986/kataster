@@ -68,7 +68,8 @@ Files under `.claude/` and `.opencode/` are copied wholesale – the installer w
 it wrote, so a new file needs no registration. Two things it does *not* pick up on its own:
 
 - **Permissions.** A new `scripts/*.ts` under `.claude/skills/<name>/` needs its `Bash(node …)` entry in `ALLOW` in
-  `src/install.mjs`, or the command will be confirmed by the user at every call.
+  `src/install.mjs`, or the command will be confirmed by the user at every call. The research scripts are covered by
+  `Bash(node .claude/skills/research/scripts/*)`, the same pattern the other skills use.
 - **Settings and config.** `.claude/settings.json` and `.opencode/opencode.jsonc` are *merged*, not replaced. Hooks
   belong in `HOOK_EVENTS` in `src/install.mjs`; do not hand-edit the JSON that the installer generates.
 
@@ -91,7 +92,9 @@ Two files, one body:
 
 The prose below the frontmatter is shared, because both harnesses run the same instructions. A review agent gets
 read-only tools and, at most, write access to `docs/stories/` and `docs/reviews/` – reviews produce findings, not
-fixes.
+fixes. A read-only agent such as `researcher` gets only `Read, Glob, Grep, WebFetch, WebSearch` in Claude Code and
+denies edit, shell and skill in OpenCode's `permissions`; it never writes and never runs a command, so web content
+cannot turn into a file or a shell call.
 
 ### A hook
 

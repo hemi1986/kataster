@@ -15,7 +15,8 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { parse as parseYaml, YAMLError } from "yaml";
-import { isManagedLabel, labelPrefix, loadBacklogConfig } from "./config.ts";
+import { isManagedLabel, labelPrefix, loadBacklogConfig, loadResearchConfig } from "./config.ts";
+import * as research from "./research.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Obj = Record<string, any>;
@@ -683,6 +684,7 @@ export function validateStories(report: Report, only: string | null = null, leni
   const stories = new Map<string, Story>();
   for (const s of parsed) if (storyId(s)) stories.set(storyId(s), s);
   const backlog = loadBacklogConfig();
+  const researchCfg = loadResearchConfig();
 
   for (const s of parsed) {
     const r = isMine(s.path) ? report : new Report();
@@ -795,6 +797,21 @@ export function validateStories(report: Report, only: string | null = null, leni
         else r.error(where, msg);
       }
     }
+    // Research is evidence, not a specification. A gated story must cite at least one source before the linter
+    // gate; the hard check runs on the status transition (engineering.ts). Expiry belongs to verify.ts.
+    const sourceRefs = research.sourceRefs(m);
+    for (const ref of sourceRefs) {
+      if (!research.isValidSourceRef(ref)) {
+        r.warn(where, `source '${ref}' is neither an http(s) URL nor a docs/research/<topic>.md reference`);
+      } else if (research.isLocalResearchRef(ref) && !existsSync(research.researchPath(ref))) {
+        r.warn(where, `research source '${ref}' does not exist – collect it with /research or remove the reference`);
+      }
+    }
+    if ((status === "draft" || status === "review") && sourceRefs.length === 0) {
+      const trigger = research.researchGateRequired(m, researchCfg);
+      if (trigger) r.warn(where, `${trigger} requires at least one 'sources:' entry before ready-for-human-review`);
+    }
+
     if (m.size === "XL") r.warn(where, "size XL – split the story");
     // Every scenario is a red → green cycle in /implement; past four the story merges commands or restates UX
     // guideline patterns. Domain stories must obey it; legacy `story` files get a warning until migrated.

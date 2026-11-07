@@ -44,6 +44,27 @@ export interface BacklogConfig {
   jira: JiraConfig;
 }
 
+export interface ResearchGateConfig {
+  /** Story risks that require at least one `sources:` entry before `ready-for-human-review`. */
+  risk: string[];
+  /** Story labels that require a source; a label matches exactly or by prefix (`security` matches `security:oauth`). */
+  labels: string[];
+}
+
+export interface ResearchConfig {
+  /** Months a research file stays valid; used when a file is written or refreshed. */
+  expiryMonths: number;
+  gate: ResearchGateConfig;
+}
+
+export const DEFAULT_RESEARCH_CONFIG: ResearchConfig = {
+  expiryMonths: 12,
+  gate: {
+    risk: ["high"],
+    labels: ["security", "auth", "payment", "privacy"],
+  },
+};
+
 export const DEFAULT_LABEL_PREFIX = "kataster";
 
 export const DEFAULT_STATUS_MAP: Record<string, string> = {
@@ -88,6 +109,33 @@ function map(value: unknown, fallback: Record<string, string>): Record<string, s
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? { ...fallback, ...(value as Record<string, string>) }
     : { ...fallback };
+}
+
+function stringList(value: unknown, fallback: string[], lowercase = false): string[] {
+  if (!Array.isArray(value)) return [...fallback];
+  const out = value
+    .filter((v): v is string => typeof v === "string")
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map((v) => (lowercase ? v.toLowerCase() : v));
+  return [...new Set(out)];
+}
+
+/**
+ * Reads `.claude/project.json` → `research`. Profiles from before 0.6 have no block and get the defaults, so an
+ * upgrade does not change the gate. An explicit empty list turns that part of the gate off.
+ */
+export function loadResearchConfig(): ResearchConfig {
+  const raw = (loadProfile().research ?? {}) as Obj;
+  const gate = (raw.gate ?? {}) as Obj;
+  const months = Number(raw.expiryMonths);
+  return {
+    expiryMonths: Number.isFinite(months) && months > 0 ? months : DEFAULT_RESEARCH_CONFIG.expiryMonths,
+    gate: {
+      risk: stringList(gate.risk, DEFAULT_RESEARCH_CONFIG.gate.risk, true),
+      labels: stringList(gate.labels, DEFAULT_RESEARCH_CONFIG.gate.labels, true),
+    },
+  };
 }
 
 /** Reads `.claude/project.json` → `backlog`. Missing values fall back to the local provider. */

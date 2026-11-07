@@ -32,7 +32,7 @@ When the user uses vague or overloaded terms, propose a precise canonical term. 
 When domain relationships are being discussed, stress-test them with specific scenarios. Invent scenarios that probe edge cases and force the user to be precise about the boundaries between concepts. "A customer reports the same problem on an item that already has an open case – a new case or the same one?"
 
 ### Cross-reference with docs and code
-When the user states how something works, check whether `docs/domain/events.yaml`, the stories (and the code, once it exists) agree. If you find a contradiction, surface it.
+When the user states how something works, check whether `docs/domain/events.yaml`, the stories (and the code, once it exists) agree. If you find a contradiction, surface it. A source that contradicts the model is a grilling question, not a silent rewrite of the model (see the `research` skill).
 
 ### Update CONTEXT.md inline
 When a term is resolved, update `CONTEXT.md` right there. Don't batch these up: capture them as they happen. `CONTEXT.md` is totally devoid of implementation details. It is a glossary and nothing else – not a spec, not a scratch pad.

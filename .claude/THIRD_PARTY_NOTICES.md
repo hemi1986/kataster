@@ -31,8 +31,12 @@ the review agents):
 | `.claude/skills/retro/SKILL.md` | `skills/engineering/retro/SKILL.md` | adapted |
 | `.claude/skills/domain-model/SKILL.md` | `skills/engineering/domain-modeling/SKILL.md` | adapted (contexts, aggregates, data model) |
 | `.claude/skills/prototype/SKILL.md` | `skills/engineering/prototype/SKILL.md` | adapted (standalone HTML in discovery, story/guideline capture, timebox) |
+| `.claude/skills/research/SKILL.md` | `skills/engineering/research/SKILL.md` | adapted (read-only researcher, source tiers, expiry, grilling integration) |
 | `.claude/skills/prototype/UI.md` | `skills/engineering/prototype/UI.md` | adapted (standalone default, in-app exception, Kataster artifacts) |
 | `.claude/skills/prototype/LOGIC.md` | `skills/engineering/prototype/LOGIC.md` | adapted (Kataster artifacts) |
+
+The `researcher` agent is built on the same idea: one read-only research pass per cross-cutting question, findings
+with source, tier and confidence, and no decision on the agent's side.
 
 Agents and commands built on top of them (`/implement`, `/feature`, `/review-stories`, `/groom-backlog`,
 `/shape`, the review agents in `.claude/agents/`) are Kataster's own, but they stand on the same ideas: grilling as

@@ -5,12 +5,14 @@
  * - docs/stories/*.md       → the same deterministic rules as `skills/user-stories/scripts/lint-story.ts`
  *                             (frontmatter, aggregate/command/events, Gherkin, scenario limit) and the status change
  *                             since the last commit (engineering workflow); on success BACKLOG.md is re-rendered
+ * - docs/research/*.md      → format and expiry metadata (README and `_`-prefixed files are skipped)
  * Exit 2 + stderr = Claude gets the errors back and has to fix them.
  */
 import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import * as d from "../lib/discovery.ts";
 import * as e from "../lib/engineering.ts";
+import * as research from "../lib/research.ts";
 import { writeGapRegister } from "../lib/gaps.ts";
 
 let data: d.Obj;
@@ -47,6 +49,12 @@ if (rel === "docs/domain/events.yaml") {
     for (const msg of e.transitionErrors(story, from, String(story.meta.status), stories)) report.error(rel, msg);
   }
   if (report.ok) d.writeBacklogMd();
+} else if (rel.startsWith("docs/research/") && rel.endsWith(".md")) {
+  const name = rel.split("/").pop() ?? "";
+  if (name === "README.md" || name.startsWith("_")) process.exit(0);
+  const validation = research.validateResearchFile(path);
+  for (const error of validation.errors) report.error(rel, error);
+  for (const warning of validation.warnings) report.warn(rel, warning);
 } else {
   process.exit(0);
 }

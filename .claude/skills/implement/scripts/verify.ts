@@ -71,6 +71,8 @@ const node = process.execPath;
 const disc = join(here, "..", "..");
 run("events.yaml", node, [join(disc, "event-storming", "scripts", "validate-events.ts")]);
 run("stories + spec linter", node, [join(disc, "user-stories", "scripts", "validate-stories.ts")]);
+// Research is evidence: expired or missing referenced files warn, they never fail the gate.
+run("research sources", node, [join(disc, "research", "scripts", "research-check.ts"), "--referenced"], true);
 // The map is generated; staleness is a warning (adoption may not have run yet), not a failed gate.
 run("repository map", node, [join(disc, "adopt", "scripts", "repo-map.ts"), "--check"], true);
 run("path-scoped rules", node, [join(disc, "adopt", "scripts", "rule-doc.ts"), "--check"], true);

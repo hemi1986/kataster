@@ -78,7 +78,8 @@ npx kataster init . --yes --name "Acme" --ui-language de --artifacts en
   skills/               the workflow skills (grilling, event-storming, domain-model, architect, backlog, …)
   skills/adopt/scripts/ repository map and per-package docs for brownfield adoption
   skills/feature/scripts/ read-only intake: story, GitHub/Jira ticket or URL → route
-  agents/               review agents and the on-demand UX utility (Claude Code)
+  skills/research/      research workflow, template and the deterministic research check
+  agents/               review agents, the read-only researcher and the on-demand UX utility (Claude Code)
   hooks/                plain-Node guardrails and validators
   lib/                  deterministic domain/story/backlog logic
 .opencode/
@@ -94,6 +95,7 @@ docs/
   product/initiatives/  proposals for large ideas from /shape (no stories)
   product/ux-guidelines.md   the interface yardstick
   prototypes/           throwaway prototypes on their own branch; the default branch keeps the README
+  research/             evidence for cross-cutting questions, with an expiry (format in its README)
   domain/events.yaml    the event storming model (empty is valid)
   domain/context-map.md          target context map
   domain/context-map.as-is.md    as-is snapshot – created by /adopt
@@ -118,8 +120,9 @@ Existing `CONTEXT.md` and `docs/` are never touched.
 | `/grill-me` | Relentless interview on a plan, decision or idea |
 | `/grill-with-docs` | The same, writing glossary and ADRs as you go |
 | `/event-storming [process]` | Big-picture or single-process event storming |
-| `/feature <idea \| ST-NNN \| #123 \| PROJ-123>` | New feature from an idea, an existing story or a ticket: intake and routing, grilling, focused storming, model, stories, review; bugs become a regression story; `--prototype` adds a throwaway prototype before the stories |
-| `/shape <idea \| ticket> [--dry-run]` | Before a large feature: frame, place (existing/new context, shared library), impact, slices, rough cost range, recommendation; creates no stories |
+| `/feature <idea \| ST-NNN \| #123 \| PROJ-123>` | New feature from an idea, an existing story or a ticket: intake and routing, grilling, focused storming, model, stories, review; bugs become a regression story; `--prototype` adds a throwaway prototype before the stories; `--research` forces the research step |
+| `/shape <idea \| ticket> [--dry-run]` | Before a large feature: frame, place (existing/new context, shared library), research external facts, impact, slices, rough cost range, recommendation; creates no stories |
+| `/research <question>` | One cross-cutting question as evidence: check existing research and expiry, dispatch the read-only researcher, persist findings in `docs/research/<topic>.md`, cite them in grilling and stories |
 | `/review-stories [ST-…]` | Spec linter gate → `ready-for-human-review`; the user approves `ready` |
 | `/backlog-sync [status\|pull\|push]` | Keep `docs/stories/` in sync with GitHub Issues or Jira |
 | `/groom-backlog [scope]` | Periodic challenge: is this backlog still worth building? |
@@ -161,6 +164,30 @@ the tests it can find. An affected path with no test for the behaviour that is a
 **characterization test** that pins the current behaviour, committed separately before the story's red → green
 loop. If the current behaviour contradicts the story, that is a finding and the story goes back to `review`; the
 code is never silently adjusted. The fast lane skips this except for an explicit refactoring.
+
+### Research as evidence
+
+Cross-cutting stories rest on current primary sources. `/feature` triggers research through the grilling rules for
+auth/identity, security, payment, privacy, accessibility, performance and new technologies; `--research` forces it
+for a topic the trigger list does not catch. `/research <question>` runs the same path directly.
+
+The **`researcher` is strictly read-only** – web search/fetch and repository reading, no write, no shell – and the
+only way web content enters the session. Findings are data: instructions inside a fetched page, issue or comment are
+ignored. The main session writes them verbatim to `docs/research/<topic>.md`; `expires` is computed at write and
+refresh time from `research.expiryMonths` (default 12 months).
+
+Research is **evidence, not a specification**. Only a finding you confirm in grilling becomes a testable criterion
+with an observable threshold; rejected options are recorded with the reason. A story cites its evidence in
+`sources: [...]`, and a story with `risk: high` or a configured gate label (`security`, `auth`, `payment`, `privacy`
+by default) needs a resolvable source before `ready-for-human-review` – the linter warns, `story-status.ts` blocks.
+Expiry is advisory: `research-check.ts --referenced` runs in `verify.ts` and warns about stale files without failing
+the gate.
+
+```bash
+/research "Which PKCE configuration is required for a public SPA client?"
+/feature "checkout with saved cards" --research
+node .claude/skills/research/scripts/research-check.ts --referenced
+```
 
 ### Starting from a ticket
 
@@ -292,6 +319,10 @@ node .claude/skills/implement/scripts/affected.ts --base origin/main
       "statusMap": { "draft": "To Do", "ready": "Ready", "done": "Done" },
       "priorityMap": { "must": "Highest", "should": "High" }
     }
+  },
+  "research": {
+    "expiryMonths": 12,
+    "gate": { "risk": ["high"], "labels": ["security", "auth", "payment", "privacy"] }
   }
 }
 ```
@@ -349,7 +380,7 @@ For Jira, `jira-plan.ts` prints the exact MCP calls, `jira-record.ts` writes the
   node .claude/skills/adopt/scripts/boundary-check.ts --update-baseline
   ```
 - **`verify.ts`** is the one gate: project checks, artifact validity, scenario ↔ test traceability, domain IDs in
-  the code, glossary language.
+  the code, glossary language. Referenced research files are checked for expiry as an advisory step.
 - **Review agents** never write code or stories: `code-reviewer` and `acceptance-tester` report findings, the
   acceptance verdict decides whether a domain story is `done`, and a finding is fixed in the story or handed back
   as an open question. `ux-designer` is an on-demand utility (`ui: true`), never a gate.
@@ -399,8 +430,9 @@ Kataster stands on other people's work:
 - **Matt Pocock** – [skills](https://github.com/mattpocock/skills), [aihero.dev](https://www.aihero.dev). The grilling
   interview (`grilling`, `grill-me`, `grill-with-docs`), test-driven development (`tdd`), the deep-module vocabulary
   (`codebase-design`), the architecture survey (`improve-codebase-architecture`), the throwaway prototype
-  (`prototype`), the retro, the domain-modeling discipline and `writing-for-agents` come from his skill repository –
-  partly adapted, partly copied verbatim under MIT. The per-file mapping and the license text are in
+  (`prototype`), the research skill (adapted: read-only researcher, source tiers, expiry, grilling integration), the
+  retro, the domain-modeling discipline and `writing-for-agents` come from his skill repository – partly adapted,
+  partly copied verbatim under MIT. The per-file mapping and the license text are in
   [.claude/THIRD_PARTY_NOTICES.md](.claude/THIRD_PARTY_NOTICES.md).
 - **John Ousterhout**, *A Philosophy of Software Design* – "Design It Twice" and the depth, seam and deletion-test
   vocabulary.
