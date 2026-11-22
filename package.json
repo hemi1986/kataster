@@ -28,7 +28,7 @@
     "node": ">=22.18"
   },
   "bin": {
-    "kataster": "./bin/kataster.mjs"
+    "kataster": "bin/kataster.mjs"
   },
   "publishConfig": {
     "access": "public"
