@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.3 – 2026-11-22
 
 Follow-ups from the 0.6.2 upgrade report in #8.
 
