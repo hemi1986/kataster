@@ -40,7 +40,8 @@ npx kataster doctor
 
 Checks Node version, workflow files, manifest, profile, tooling dependencies, the docs skeleton, whether
 `docs/domain/events.yaml` validates, whether every ADR has its `status` in the frontmatter, and the backlog backend
-(Jira project/MCP server or GitHub CLI/auth).
+(Jira project/MCP server or GitHub CLI/auth). It also warns (`!`, not a failure) when the app's Prettier, ESLint or
+root `tsconfig.json` would check Kataster's own files.
 
 ## Upgrade
 
@@ -112,6 +113,10 @@ the source of truth; the local directory is the mirror that validation and test 
 questions stay local.
 
 ## Troubleshooting
+
+**The app's lint or format check fails right after `init`** – Prettier, ESLint or the root `tsconfig.json` also
+check `.claude/`, `.opencode/`, the managed `AGENTS.md`/`CLAUDE.md` blocks and the generated files. `init` prints the
+entries to add and never edits your configs; `doctor` lists what is still missing.
 
 **"Tooling dependencies are missing"** – run `npm install --prefix .claude`. The validators and hooks need `yaml`.
 

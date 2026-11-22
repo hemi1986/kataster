@@ -6,6 +6,7 @@ import { stdin, stdout } from "node:process";
 import { Installer, VERSION } from "./install.mjs";
 import { buildProfile, detectProject } from "./detect.mjs";
 import { readJson, write } from "./util.mjs";
+import { formatToolIgnoreHint, toolIgnoreGaps } from "./tool-ignores.mjs";
 
 const HELP = `Kataster ${VERSION} – agent workflow for domain-driven discovery and delivery
 
@@ -183,6 +184,8 @@ async function init(options) {
   }
 
   printSummary(installer);
+  const ignoreHint = formatToolIgnoreHint(toolIgnoreGaps(root));
+  if (ignoreHint) console.log(ignoreHint);
   nextSteps(root, profile);
 }
 
@@ -272,7 +275,7 @@ function adrsWithoutStatus(root) {
 function doctor(options) {
   const root = resolve(options._[1] ?? ".");
   const checks = [];
-  const add = (name, ok, detail = "") => checks.push({ name, ok, detail });
+  const add = (name, ok, detail = "", { warn = false } = {}) => checks.push({ name, ok, detail, warn });
 
   add("Node >= 22.18", Number(process.versions.node.split(".")[0]) > 22 || (Number(process.versions.node.split(".")[0]) === 22 && Number(process.versions.node.split(".")[1]) >= 18), process.versions.node);
   add("Workflow installed", existsSync(join(root, ".claude", "skills")) && existsSync(join(root, ".opencode")), root);
@@ -330,6 +333,10 @@ function doctor(options) {
       ? `${unprotected.join(", ")} – protect-files only recognises 'status: accepted' in the frontmatter; move the status there (see ADR-FORMAT.md)`
       : "",
   );
+  // Advisory: a project may lint Kataster's files on purpose, so a gap is a warning, not a failed check.
+  for (const gap of toolIgnoreGaps(root)) {
+    add(`${gap.tool} ignores Kataster's files`, false, `${gap.file}: add ${gap.missing.join(", ")}`, { warn: true });
+  }
   const events = join(root, ".claude/skills/event-storming/scripts/validate-events.ts");
   if (existsSync(events) && existsSync(join(root, ".claude", "node_modules", "yaml"))) {
     const r = spawnSync(process.execPath, [events], { cwd: root, encoding: "utf8" });
@@ -340,9 +347,14 @@ function doctor(options) {
 
   banner();
   console.log(`Doctor – ${root}\n`);
-  for (const check of checks) console.log(`  ${check.ok ? "✓" : "✗"} ${check.name}${check.detail ? `  (${check.detail})` : ""}`);
-  const failed = checks.filter((c) => !c.ok);
-  console.log(failed.length ? `\n${failed.length} check(s) failed.` : "\nEverything looks good.");
+  for (const check of checks) {
+    const mark = check.ok ? "✓" : check.warn ? "!" : "✗";
+    console.log(`  ${mark} ${check.name}${check.detail ? `  (${check.detail})` : ""}`);
+  }
+  const failed = checks.filter((c) => !c.ok && !c.warn);
+  const warned = checks.filter((c) => !c.ok && c.warn);
+  const warnings = warned.length ? ` ${warned.length} warning(s).` : "";
+  console.log(failed.length ? `\n${failed.length} check(s) failed.${warnings}` : `\nEverything looks good.${warnings}`);
   process.exitCode = failed.length ? 1 : 0;
 }
 

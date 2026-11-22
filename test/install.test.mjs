@@ -220,6 +220,19 @@ test("init says when --greenfield overrides the detection", () => {
   assert.equal(json(dir, ".claude/project.json").kind, "greenfield");
 });
 
+test("init prints the ignore entries the app's tools need, and doctor only warns", () => {
+  const dir = repo({ "package.json": "{}", ".prettierrc": "{}", "eslint.config.js": "export default [];\n" });
+  const init = run(["init", dir, "--yes", "--no-install"]);
+  assert.equal(init.code, 0, init.out);
+  assert.match(init.out, /also checks Kataster's own files/);
+  assert.match(init.out, /ESLint – eslint\.config\.js:\n\s+\{ ignores: \[".claude\/\*\*", ".opencode\/\*\*"\] \}/);
+  assert.equal(read(dir, "eslint.config.js"), "export default [];\n", "init must not touch the config");
+  const doctor = run(["doctor", dir]).out;
+  assert.match(doctor, /! ESLint ignores Kataster's files/);
+  assert.match(doctor, /warning\(s\)/);
+  assert.doesNotMatch(doctor, /✗ (ESLint|Prettier)/);
+});
+
 test("doctor flags ADRs whose status is not in the frontmatter", () => {
   const dir = repo({
     "package.json": "{}",
