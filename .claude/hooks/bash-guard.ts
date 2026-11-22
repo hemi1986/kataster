@@ -6,12 +6,18 @@
  * - production deployments from the CLI (Vercel, Netlify, Fly, Railway, Heroku, …)
  * - destructive database commands unless they clearly target a local database
  *
+ * Only the command that runs is checked: text in quotes, heredoc bodies, `echo`/`printf` output and commit messages
+ * are not (`.claude/lib/shell.ts`). What does run – `$(…)`, backticks, `bash -c "…"`, `eval` – is checked too. SQL is
+ * usually quoted, so the database check also reads quoted arguments, except for commands that only print or record
+ * text.
+ *
  * Provider and tool names are matched generically; a project that uses something else can extend the lists below
  * without touching the logic.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../lib/discovery.ts";
+import { segments } from "../lib/shell.ts";
 
 let data: Record<string, any>;
 try {
@@ -57,6 +63,9 @@ const DESTRUCTIVE_DB = [
   /\b(redis-cli|valkey-cli)\b.*\b(FLUSHALL|FLUSHDB)\b/i,
 ];
 
+/** Commands that only print or record their arguments – a DROP TABLE in their text is not executed. */
+const TEXT_ONLY = new Set(["echo", "printf", "git", "gh", "cat", "grep", "rg", "true", ":"]);
+
 /** DATABASE_URL the command would use: inline assignment, else the project's .env files, else the environment. */
 function databaseUrl(): string {
   const inline = /\b(?:DATABASE_URL|POSTGRES_URL)=("[^"]*"|'[^']*'|\S+)/.exec(cmd as string)?.[1];
@@ -70,22 +79,20 @@ function databaseUrl(): string {
   return process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? "";
 }
 
-for (const part of cmd.split(/&&|\|\||;|\n/)) {
-  const c = part.trim();
-
-  if (/\bgit\s+push\b/.test(c)) {
-    if (/(\s--force(?!-with-lease)\b|\s-f\b|\s\+\S+)/.test(c)) block("force push.");
+for (const { masked, raw, head } of segments(cmd)) {
+  if (/\bgit\s+push\b/.test(masked)) {
+    if (/(\s--force(?!-with-lease)\b|\s-f\b|\s\+\S+)/.test(masked)) block("force push.");
     const branch = defaultBranch();
-    if (/--force-with-lease/.test(c) && new RegExp(`\\b(${branch}|main|master)\\b`).test(c))
+    if (/--force-with-lease/.test(masked) && new RegExp(`\\b(${branch}|main|master)\\b`).test(masked))
       block(`force push onto ${branch}.`);
   }
 
-  if (PROD_DEPLOY.some((re) => re.test(c))) {
+  if (PROD_DEPLOY.some((re) => re.test(masked))) {
     block("production deployment from the CLI – production deploys only via merge to the default branch.");
   }
 
-  const destructive = DESTRUCTIVE_DB.some((re) => re.test(c));
-  if (destructive && !LOCAL_DB.test(c) && !LOCAL_DB.test(databaseUrl())) {
+  const destructive = !TEXT_ONLY.has(head) && DESTRUCTIVE_DB.some((re) => re.test(raw));
+  if (destructive && !LOCAL_DB.test(raw) && !LOCAL_DB.test(databaseUrl())) {
     block("destructive database command and the target database is not clearly local.");
   }
 }
