@@ -208,23 +208,33 @@ export function parseIssue(
   if (cfg.provider !== "local") {
     clean.external = { provider: cfg.provider, key: issue.key, ...(issue.url ? { url: issue.url } : {}) };
   }
-  // Keep a stable key order: identity, classification, workflow, links, then the external reference.
-  const ordered: d.Obj = {
-    id: clean.id,
-    title: clean.title,
-    type: clean.type,
-    context: clean.context,
-    priority: clean.priority,
-    size: clean.size,
-    risk: clean.risk,
-    events: clean.events,
-    sources: clean.sources,
-    depends_on: clean.depends_on,
-    labels: clean.labels,
-    status: clean.status,
-    ...(clean.external ? { external: clean.external } : {}),
-  };
-  return { id, meta: ordered, body };
+  return { id, meta: orderMeta(clean, match ? meta : null), body };
+}
+
+/** Frontmatter keys in their canonical order: identity, classification, workflow, links. */
+const KNOWN_KEYS = ["id", "title", "type", "context", "priority", "size", "risk", "events", "sources", "depends_on", "labels", "status"];
+/** What an absent key means. A pull does not write such a default into a story that never had the key. */
+const ABSENT: d.Obj = { type: "story", context: "", priority: "should", size: null, risk: null, status: "draft" };
+const isAbsentValue = (key: string, value: unknown): boolean =>
+  Array.isArray(value) ? value.length === 0 : key in ABSENT && value === ABSENT[key];
+
+/**
+ * Keeps every key and a stable order, so a push followed by a pull is a no-op. With a machine block (`original`),
+ * its keys keep their order – including the ones the pull does not know, such as `aggregate`, `command` or `ui` –
+ * and a known key it lacks is added only when the tracker gives it a non-default value. Without one (an issue
+ * Kataster did not create), the full skeleton is written in the canonical order. The external reference comes last.
+ */
+function orderMeta(clean: d.Obj, original: d.Obj | null): d.Obj {
+  const ordered: d.Obj = {};
+  for (const key of original ? Object.keys(original) : []) {
+    if (key !== "external") ordered[key] = clean[key];
+  }
+  for (const key of KNOWN_KEYS) {
+    if (key in ordered) continue;
+    if (key === "id" || key === "title" || !original || !isAbsentValue(key, clean[key])) ordered[key] = clean[key];
+  }
+  if (clean.external) ordered.external = clean.external;
+  return ordered;
 }
 
 function reversePriority(priority: string | undefined, cfg: BacklogConfig): string | undefined {

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { parseFrontmatter } from "../.claude/lib/discovery.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cli = resolve(here, "..", "bin", "kataster.mjs");
@@ -196,4 +197,27 @@ test("a conflict backs up the local story and lets the tracker win", () => {  co
   assert.match(pull.out, /conflict\s+ST-001/);
   assert.match(read(dir, "docs/stories/ST-001-place-an-order.md"), /title: Remote title/);
   assert.ok(existsSync(join(dir, ".kataster", "backup", "backlog")), "backup directory missing");
+});
+
+test("push → pull is a no-op for a domain story", () => {
+  const { dir, env } = githubRepo();
+  const file = join(dir, "docs/stories/ST-001-place-an-order.md");
+  writeFileSync(file, read(dir, "docs/stories/ST-001-place-an-order.md")
+    .replace("type: story", "type: domain\naggregate: AGG-Order\ncommand: CMD-PlaceOrder\nui: true"), "utf8");
+  assert.equal(runNode(dir, "backlog-push.ts", env).code, 0);
+  const pushed = parseFrontmatter(file);
+
+  // Change only the tracker title so the pull has to rewrite the mirror.
+  const stateFile = join(dir, "gh-state.json");
+  const state = JSON.parse(readFileSync(stateFile, "utf8"));
+  state.issues[0].title = "ST-001: Place an order now";
+  writeFileSync(stateFile, JSON.stringify(state, null, 2));
+
+  const pull = runNode(dir, "backlog-pull.ts", env);
+  assert.equal(pull.code, 0, pull.out);
+  // The pull re-serializes the YAML, so compare the parsed frontmatter (keys, order, values) and the body.
+  const pulled = parseFrontmatter(file);
+  assert.deepEqual(Object.keys(pulled.meta), Object.keys(pushed.meta));
+  assert.deepEqual(pulled.meta, { ...pushed.meta, title: "Place an order now" });
+  assert.equal(pulled.body, pushed.body);
 });
