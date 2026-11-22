@@ -104,6 +104,7 @@ test("installs the workflow into an existing repository", () => {
   assert.match(read(dir, "docs/domain/events.yaml"), /domain: demo/);
   assert.match(read(dir, "AGENTS.md"), /kataster:begin/);
   assert.match(read(dir, "AGENTS.md"), /read-only `researcher`/);
+  assert.match(read(dir, "AGENTS.md"), /installed templates are English and are translated as you fill them/);
 
   const settings = json(dir, ".claude/settings.json");
   assert.ok(settings.hooks.SessionStart[0].hooks[0].command.includes("session-start.ts"));
@@ -217,6 +218,19 @@ test("init says when --greenfield overrides the detection", () => {
   assert.equal(result.code, 0, result.out);
   assert.match(result.out, /Using: greenfield \(--greenfield overrides the detection\)/);
   assert.equal(json(dir, ".claude/project.json").kind, "greenfield");
+});
+
+test("init prints the ignore entries the app's tools need, and doctor only warns", () => {
+  const dir = repo({ "package.json": "{}", ".prettierrc": "{}", "eslint.config.js": "export default [];\n" });
+  const init = run(["init", dir, "--yes", "--no-install"]);
+  assert.equal(init.code, 0, init.out);
+  assert.match(init.out, /also checks Kataster's own files/);
+  assert.match(init.out, /ESLint – eslint\.config\.js:\n\s+\{ ignores: \[".claude\/\*\*", ".opencode\/\*\*"\] \}/);
+  assert.equal(read(dir, "eslint.config.js"), "export default [];\n", "init must not touch the config");
+  const doctor = run(["doctor", dir]).out;
+  assert.match(doctor, /! ESLint ignores Kataster's files/);
+  assert.match(doctor, /warning\(s\)/);
+  assert.doesNotMatch(doctor, /✗ (ESLint|Prettier)/);
 });
 
 test("doctor flags ADRs whose status is not in the frontmatter", () => {

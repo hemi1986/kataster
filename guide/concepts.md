@@ -35,7 +35,7 @@ runs.
 | `docs/domain/gap-register.md` | Generated rows for every `as-is`/`unresolved` aggregate, linking as-is and target; decisions outside the block | `/adopt`, user |
 | `docs/architecture/data-model.md` | Logical, stack-neutral model per aggregate; lifecycle and ER diagrams | domain-architect |
 | `docs/engineering/conventions.md` | How code is built here, including the seam catalog | user |
-| `docs/adr/` | Architecture decisions. `proposed` until the user accepts; accepted ones are superseded, never edited | user |
+| `docs/adr/` | Architecture decisions. `proposed` until the user accepts; accepted ones are superseded, never changed (editorial fixes are logged) | user |
 | `docs/stories/` | The backlog. One Markdown file per story; `BACKLOG.md` is generated. With a tracker, this is the local mirror | main session as spec engineer; spec linter; `/backlog-sync` with a tracker |
 | `docs/product/vision.md` | Problem, user groups, goals, non-goals, success criteria | user |
 | `docs/product/ux-guidelines.md` | The interface yardstick, as numbered rules with date and reason | ux-designer, approved by user |

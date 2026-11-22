@@ -443,7 +443,10 @@ This repository runs the Kataster workflow. Discovery lives in \`.claude/skills/
 - **Never guess:** unclear → a hotspot (\`HS-n\`) or \`[OPEN]\` plus a row in \`OPEN_QUESTIONS.md\`.
 - **Project checks:** \`docs/engineering/checks.yaml\` – what runs at edit time and Stop/CI; architecture boundaries
   in \`docs/architecture/boundaries.yaml\` with existing debt in the baseline (only new violations fail).
-- **Language:** domain terms exactly as in \`CONTEXT.md\`; UI words from its \`_UI (<lang>)_\` lines.
+- **Language:** domain terms exactly as in \`CONTEXT.md\`; UI words from its \`_UI (<lang>)_\` lines. Write docs,
+  stories and ADRs in \`languages.artifacts\`; the installed templates are English and are translated as you fill them.
+  What scripts read stays as in the template: frontmatter keys and values, the headings and markers listed in
+  \`docs/workflow.md\`, Gherkin keywords and IDs.
 - **1-command rule:** one story = one command + its events on one aggregate, at most 4 Gherkin scenarios. Full
   domain stories are \`type: domain\`; UI tweaks, refactors, dependencies and setup use the fast lane
   (\`type: chore\` or \`type: task\`).

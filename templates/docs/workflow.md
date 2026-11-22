@@ -74,6 +74,15 @@ is what to read when you are unsure where something belongs.
 
 - **Language.** Artifacts and code are in the artifact language (`languages.artifacts`), UI texts in the UI language
   (`languages.ui`) – both in `.claude/project.json`. IDs are CamelCase with a prefix (`EVT-OrderPlaced`).
+  The installed templates and formats are English, whatever the artifact language: translate the prose and the
+  headings as you fill them. Keep in English what scripts read:
+  - frontmatter keys and values (`status: accepted`, `type: domain`, `priority: must`),
+  - story headings `## Story`, `## Acceptance Criteria`, `## Task`, `## Question`; research headings `## Question`,
+    `## Findings`, `## Conflicts, caveats and gaps`, `## Open questions for the grilling`; the ADR heading
+    `## Editorial changes`,
+  - the `CONTEXT.md` markers `**Term**:`, `_Avoid_:`, `_UI (<lang>)_`, and `[OPEN]`,
+  - Gherkin keywords (`Scenario`, `Given`, `When`, `Then`) and IDs.
+  The story sentence follows the artifact language (`Als <Rolle> möchte ich …` for `de`).
 - **Domain terms exactly as in `CONTEXT.md`**, never an `_Avoid_` synonym – in docs and in code. A new term goes into
   `CONTEXT.md` first.
 - **Don't guess.** Capture anything unclear as a hotspot (`HS-n` in `events.yaml`) or `[OPEN]` plus a row in
@@ -81,7 +90,8 @@ is what to read when you are unsure where something belongs.
 - **`events.yaml` and stories are validated by a hook after every write**, including status changes. Fix errors
   immediately; never work around them.
 - **Tech stack only after event storming and domain model**, via ADR. New ADRs are `proposed`; only the user sets
-  `accepted`. Accepted ADRs are never edited, only superseded (a hook enforces it).
+  `accepted`. An accepted decision is only superseded, never changed in place; editorial fixes are logged under
+  `## Editorial changes` (a hook enforces both).
 - **The backlog is local by default.** `docs/stories/` is the backlog and no issue tracker is required. With
   `backlog.provider` = `jira` or `github` in `.claude/project.json`, the tracker is the source of truth and
   `docs/stories/` is its local mirror; sync through `/backlog-sync` and never edit `BACKLOG.md` by hand. Reviews and
