@@ -11,7 +11,7 @@
 npm install --prefix .claude --no-audit --no-fund
 npm run typecheck --prefix .claude
 npm test
-npm pack --dry-run        # 148 files, 218 kB – no examples/, no node_modules, no state/
+npm pack --dry-run        # about 165 files, 290 kB – no examples/, no node_modules, no state/
 ```
 
 4. Install the tarball once and start a throwaway project with it – a tarball that installs is not the same as a
@@ -30,7 +30,9 @@ kataster doctor /tmp/smoke
 
 The tag publishes. `v0.2.0` starts `.github/workflows/release.yml`, which checks that the tag matches
 `package.json`, runs the type check and the suite, then publishes over OIDC – no npm token in the repository, no
-one-time password, and provenance attestations are written automatically.
+one-time password, and provenance attestations are written automatically. Afterwards it creates the GitHub release
+`Kataster <version>` with the version's `CHANGELOG.md` section as notes, so the changelog section has to exist
+before you tag.
 
 ```bash
 git push origin main
