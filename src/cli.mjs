@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
@@ -251,6 +251,21 @@ function lintStory(options) {
   process.exitCode = r.status ?? 1;
 }
 
+/** ADRs in docs/adr/ without a `status:` key in their YAML frontmatter – the accepted-ADR guard cannot see them. */
+function adrsWithoutStatus(root) {
+  const dir = join(root, "docs", "adr");
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => /^\d{4}-.*\.md$/.test(name))
+    .filter((name) => {
+      const text = readFileSync(join(dir, name), "utf8").replaceAll("\r\n", "\n");
+      const front = text.startsWith("---\n") ? text.slice(4, text.indexOf("\n---", 4)) : "";
+      return !/^status:\s*\S/m.test(front);
+    })
+    .map((name) => `docs/adr/${name}`)
+    .sort();
+}
+
 function doctor(options) {
   const root = resolve(options._[1] ?? ".");
   const checks = [];
@@ -304,6 +319,14 @@ function doctor(options) {
   for (const file of ["CONTEXT.md", "docs/domain/events.yaml", "docs/product/vision.md", "docs/stories"]) {
     add(file, existsSync(join(root, file)), "");
   }
+  const unprotected = adrsWithoutStatus(root);
+  add(
+    "ADR status in frontmatter",
+    unprotected.length === 0,
+    unprotected.length
+      ? `${unprotected.join(", ")} – protect-files only recognises 'status: accepted' in the frontmatter; move the status there (see ADR-FORMAT.md)`
+      : "",
+  );
   const events = join(root, ".claude/skills/event-storming/scripts/validate-events.ts");
   if (existsSync(events) && existsSync(join(root, ".claude", "node_modules", "yaml"))) {
     const r = spawnSync(process.execPath, [events], { cwd: root, encoding: "utf8" });

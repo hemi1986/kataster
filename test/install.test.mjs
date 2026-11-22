@@ -211,6 +211,18 @@ test("doctor reports a missing installation", () => {
   assert.match(result.out, /Workflow installed/);
 });
 
+test("doctor flags ADRs whose status is not in the frontmatter", () => {
+  const dir = repo({
+    "package.json": "{}",
+    "docs/adr/0001-use-events.md": "---\nstatus: accepted\n---\n\n# Use events\n",
+    "docs/adr/0002-use-postgres.md": "# Use Postgres\n\n- **Status:** Accepted\n",
+  });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  const out = run(["doctor", dir]).out;
+  assert.match(out, /✗ ADR status in frontmatter\s+\(docs\/adr\/0002-use-postgres\.md –/);
+  assert.doesNotMatch(out, /0001-use-events/);
+});
+
 test("upgrade migrates an installation made under the old name", () => {
   const dir = repo({
     "package.json": "{}",

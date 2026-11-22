@@ -39,7 +39,8 @@ npx kataster doctor
 ```
 
 Checks Node version, workflow files, manifest, profile, tooling dependencies, the docs skeleton, whether
-`docs/domain/events.yaml` validates, and the backlog backend (Jira project/MCP server or GitHub CLI/auth).
+`docs/domain/events.yaml` validates, whether every ADR has its `status` in the frontmatter, and the backlog backend
+(Jira project/MCP server or GitHub CLI/auth).
 
 ## Upgrade
 
@@ -129,6 +130,9 @@ detection.
 
 **An accepted ADR can't be edited** – by design. Write a new ADR and set the old one's status to
 `superseded by ADR-NNNN`. The hook allows exactly that.
+
+**An accepted ADR can be edited after all** – the hook only sees `status: accepted` in the YAML frontmatter. A status
+written as a bullet (`- **Status:** Accepted`) leaves the ADR unprotected; `doctor` lists those files.
 
 **Upgrade reports conflicts** – those are files you changed. Review the diff, then either keep your version or run
 `upgrade --force` (a backup is written to `.kataster/backup/`).
