@@ -171,6 +171,12 @@ Scenario: <Error or edge case>
 ## Out of Scope
 ## Open Questions
 ```
+
+Write the story sentence in the artifact language (`languages.artifacts` in `.claude/project.json`). The linter
+accepts the English form always, `Als <Rolle> möchte ich <Ziel>, damit <Nutzen>` for `de`, and any pattern set in
+`stories.sentencePattern`. Section headings (`## Story`, `## Acceptance Criteria`), Gherkin keywords and IDs stay
+English.
+
 Scenario titles are unique within a story and become test titles (`ST-NNN: <scenario title>`). Renaming a scenario
 of an `in-progress` or `done` story breaks that link – the test must be renamed too (`verify.ts` reports it).
 

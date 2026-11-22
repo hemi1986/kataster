@@ -138,6 +138,65 @@ export function loadResearchConfig(): ResearchConfig {
   };
 }
 
+/** A story sentence form: the pattern the linter checks and the form it names in an error. */
+export interface SentenceForm {
+  pattern: RegExp;
+  form: string;
+}
+
+/**
+ * Built-in story sentence forms per artifact language. English is always accepted, so a project that switches its
+ * artifact language keeps its older stories valid. Gherkin keywords and section headings stay English.
+ */
+const SENTENCE_FORMS: Record<string, SentenceForm> = {
+  en: {
+    pattern: /\bAs an?\b.+?\bI want\b.+?\b(so that|in order to)\b/is,
+    form: "As a <role>, I want <goal>, so that <benefit>",
+  },
+  de: {
+    pattern: /\bAls\b.+?\b(?:möchte|will)\s+ich\b.+?(?:\bdamit\b|\bsodass\b|\bso\s+dass\b|\bum\b.+?\bzu\b)/is,
+    form: "Als <Rolle> möchte ich <Ziel>, damit <Nutzen>",
+  },
+};
+
+/** `stories.sentencePattern` as a list – it may be a single string. */
+function customPatterns(profile: Obj): string[] {
+  const raw = profile.stories?.sentencePattern;
+  return stringList(Array.isArray(raw) ? raw : [raw], []);
+}
+
+/**
+ * The accepted story sentence forms: the one for `languages.artifacts` (when built in), English, and any custom
+ * regular expression from `stories.sentencePattern` (a string or a list, matched case-insensitively). The first form
+ * is the one an error names. An invalid custom pattern is skipped here and reported by `invalidSentencePatterns`.
+ */
+export function storySentenceForms(profile: Obj = loadProfile()): SentenceForm[] {
+  const lang = String(profile.languages?.artifacts ?? "en").toLowerCase().split(/[-_]/)[0];
+  const forms: SentenceForm[] = [];
+  for (const source of customPatterns(profile)) {
+    try {
+      forms.push({ pattern: new RegExp(source, "is"), form: source });
+    } catch {
+      // reported by invalidSentencePatterns
+    }
+  }
+  if (SENTENCE_FORMS[lang]) forms.unshift(SENTENCE_FORMS[lang]);
+  if (lang !== "en") forms.push(SENTENCE_FORMS.en);
+  return forms.length ? forms : [SENTENCE_FORMS.en];
+}
+
+/** Custom `stories.sentencePattern` entries that are not valid regular expressions. */
+export function invalidSentencePatterns(profile: Obj = loadProfile()): string[] {
+  return customPatterns(profile).filter((source) => {
+    try {
+      new RegExp(source, "is");
+      return false;
+    } catch {
+      return true;
+    }
+  });
+}
+
 /** Reads `.claude/project.json` → `backlog`. Missing values fall back to the local provider. */
 export function loadBacklogConfig(): BacklogConfig {
   const raw = (loadProfile().backlog ?? {}) as Obj;

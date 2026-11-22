@@ -15,7 +15,16 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { parse as parseYaml, YAMLError } from "yaml";
-import { isManagedLabel, labelPrefix, loadBacklogConfig, loadResearchConfig } from "./config.ts";
+import {
+  invalidSentencePatterns,
+  isManagedLabel,
+  labelPrefix,
+  loadBacklogConfig,
+  loadProfile,
+  loadResearchConfig,
+  storySentenceForms,
+  type SentenceForm,
+} from "./config.ts";
 import * as research from "./research.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -561,15 +570,15 @@ export function section(secs: Map<string, string>, name: string): string | null 
 
 export const SCENARIO_RE = /^\s*(?:Scenario Outline|Scenario Template|Scenario|Example)\s*:/m;
 
-function checkBody(r: Report, where: string, meta: Obj, body: string): void {
+function checkBody(r: Report, where: string, meta: Obj, body: string, forms: SentenceForm[]): void {
   const secs = sections(body);
   const type = String(meta.type);
   if (isDomain(meta)) {
     const s = section(secs, "story");
     if (s === null) {
       r.error(where, "section '## Story' is missing");
-    } else if (!/\bAs an?\b.+?\bI want\b.+?\b(so that|in order to)\b/is.test(s)) {
-      r.error(where, "story sentence must have the form 'As a <role>, I want <goal>, so that <benefit>'");
+    } else if (!forms.some(({ pattern }) => pattern.test(s))) {
+      r.error(where, `story sentence must have the form '${forms[0].form}'`);
     }
   }
   if (type === "spike" && section(secs, "question") === null) r.error(where, "spike needs a '## Question' section");
@@ -685,6 +694,11 @@ export function validateStories(report: Report, only: string | null = null, leni
   for (const s of parsed) if (storyId(s)) stories.set(storyId(s), s);
   const backlog = loadBacklogConfig();
   const researchCfg = loadResearchConfig();
+  const profile = loadProfile();
+  const sentenceForms = storySentenceForms(profile);
+  for (const source of invalidSentencePatterns(profile)) {
+    report.error(".claude/project.json", `stories.sentencePattern is not a valid regular expression: ${source}`);
+  }
 
   for (const s of parsed) {
     const r = isMine(s.path) ? report : new Report();
@@ -842,7 +856,7 @@ export function validateStories(report: Report, only: string | null = null, leni
       }
     }
 
-    checkBody(r, where, m, s.body);
+    checkBody(r, where, m, s.body, sentenceForms);
     // Completeness is checked while a story is being written; `ready` ones were approved under the older rules
     // and are challenged in `/groom-backlog` instead (user, 2026-10-01).
     if (status === "draft" || status === "review" || status === "ready-for-human-review") {

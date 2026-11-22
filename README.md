@@ -323,11 +323,17 @@ node .claude/skills/implement/scripts/affected.ts --base origin/main
   "research": {
     "expiryMonths": 12,
     "gate": { "risk": ["high"], "labels": ["security", "auth", "payment", "privacy"] }
-  }
+  },
+  "stories": { "sentencePattern": "\\bEn tant que\\b.+?\\bje veux\\b.+?\\bafin de\\b" } // optional
 }
 ```
 
 `verify.ts` runs exactly these commands. `/adopt` fills them from the code; edit them if the detection is wrong.
+
+`languages.artifacts` also sets the story sentence the linter expects. English (`As a <role>, I want <goal>, so that
+<benefit>`) is always accepted; `de` adds `Als <Rolle> möchte ich <Ziel>, damit <Nutzen>`. For another language, add
+your own regular expression as `"stories": { "sentencePattern": "…" }` (a string or a list, matched
+case-insensitively). Section headings, Gherkin keywords, IDs and status values stay English.
 
 ## Backlog backends
 
