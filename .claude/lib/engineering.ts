@@ -177,7 +177,7 @@ export function nextStory(): { inProgress: d.Story[]; next: d.Story | null; bloc
 // --------------------------------------------------------------------------
 /** Not application code: tooling, docs, generated output, dependencies. */
 const IGNORED_DIRS = new Set([
-  ".git", ".claude", "docs", "node_modules", ".next", ".next-e2e", ".vercel", ".turbo", "coverage", "dist", "build", "out",
+  ".git", ".claude", ".opencode", ".kataster", "docs", "node_modules", ".next", ".next-e2e", ".vercel", ".turbo", "coverage", "dist", "build", "out",
   "playwright-report", "test-results", "public",
 ]);
 const CODE_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]);
