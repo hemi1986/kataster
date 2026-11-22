@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.1 – 2026-11-22
+
+Fixes from a greenfield trial with German artifacts (#8).
+
+- **The backlog pull keeps every field.** `backlog-pull` rebuilt the frontmatter from a fixed key list and dropped
+  `aggregate`, `command`, `ui` and any other key, so domain stories failed the linter after a pull. It also wrote
+  defaults such as `context: ""` into stories that never had them. A push followed by a pull now leaves the content
+  unchanged.
+- **Formatters no longer make the story mirror drift.** The sync compares the parsed frontmatter and the normalized
+  body instead of bytes, so a formatter changing quote style or list layout is not a local change. Byte hashes in an
+  existing `backlog-sync.json` still match.
+- **The story sentence in the artifact language.** The linter accepts the form for `languages.artifacts` (built in:
+  `de`, `Als <Rolle> möchte ich <Ziel>, damit <Nutzen>`) and custom regular expressions from
+  `stories.sentencePattern`. English stays valid. Section headings, Gherkin keywords and IDs stay English.
+- **`bash-guard` checks only the command that runs.** Quoted prose, `echo`/`printf`, commit messages and heredoc
+  bodies no longer trigger it; `$(…)`, backticks, `bash -c` and `eval` are still checked, and quoted tokens such as
+  `"--prod"` and SQL in a heredoc are now caught.
+- **Smaller fixes.** The glossary language check skips `.opencode/` and `.kataster/`. `doctor` lists ADRs whose
+  `status` is not in the frontmatter, because `protect-files` cannot protect them. `init` says when `--greenfield` or
+  `--brownfield` overrides the detection. `domain-architect` knows it has no shell and leaves formatting to the main
+  session.
+
 ## 0.6.0 – 2026-11-07
 
 - **Research as evidence.** New read-only `researcher` agent (Claude Code and OpenCode) that searches specs,
