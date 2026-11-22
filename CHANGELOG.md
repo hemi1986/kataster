@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+Follow-ups from #8.
+
+- **Language rule for templates (#9).** The installed templates are English and are translated as they are filled.
+  What scripts read stays English: frontmatter keys and values, the parsed headings and markers (listed in
+  `docs/workflow.md`), Gherkin keywords and IDs. ADRs follow the artifact language.
+- **Editorial edits to accepted ADRs (#10).** `protect-files` allows an edit that keeps `status: accepted`, keeps
+  the `## Editorial changes` log and adds a dated line to it. A changed decision is still a new ADR.
+- **Lint and format configs (#11).** `init` prints the ignore entries Prettier, ESLint and the root `tsconfig.json`
+  need for Kataster's files, and `doctor` warns about missing ones. Neither edits a user's config.
+
 ## 0.6.1 – 2026-11-22
 
 Fixes from a greenfield trial with German artifacts (#8).
