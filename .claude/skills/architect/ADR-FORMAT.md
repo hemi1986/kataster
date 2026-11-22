@@ -1,6 +1,8 @@
 # ADR Format
 
-ADRs live in `docs/adr/` and use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc. Written in English.
+ADRs live in `docs/adr/` and use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc. Written in the artifact
+language (`languages.artifacts` in `.claude/project.json`). The frontmatter keys and `status` values below stay
+English, because the hooks read them.
 
 ## Template
 

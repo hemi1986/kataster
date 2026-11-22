@@ -104,6 +104,7 @@ test("installs the workflow into an existing repository", () => {
   assert.match(read(dir, "docs/domain/events.yaml"), /domain: demo/);
   assert.match(read(dir, "AGENTS.md"), /kataster:begin/);
   assert.match(read(dir, "AGENTS.md"), /read-only `researcher`/);
+  assert.match(read(dir, "AGENTS.md"), /installed templates are English and are translated as you fill them/);
 
   const settings = json(dir, ".claude/settings.json");
   assert.ok(settings.hooks.SessionStart[0].hooks[0].command.includes("session-start.ts"));
