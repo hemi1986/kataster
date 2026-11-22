@@ -128,8 +128,9 @@ detection.
 `mcp-atlassian` server must be configured in the harness and `backlog.jira.project` must be set.
 `node .claude/skills/backlog/scripts/backlog-status.ts` shows what is linked and what drifted.
 
-**An accepted ADR can't be edited** – by design. Write a new ADR and set the old one's status to
-`superseded by ADR-NNNN`. The hook allows exactly that.
+**An accepted ADR can't be edited** – by design. A changed decision is a new ADR; set the old one's status to
+`superseded by ADR-NNNN`. An editorial fix (typo, outdated path, formatting) is allowed when the same edit adds a line
+`- YYYY-MM-DD: <what changed>` under `## Editorial changes` and keeps `status: accepted`.
 
 **An accepted ADR can be edited after all** – the hook only sees `status: accepted` in the YAML frontmatter. A status
 written as a bullet (`- **Status:** Accepted`) leaves the ADR unprotected; `doctor` lists those files.

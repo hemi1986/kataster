@@ -26,7 +26,21 @@ The `status` frontmatter is mandatory, because decisions here go through the use
 - `proposed` – every new ADR, whoever writes it (main session or `domain-architect`)
 - `accepted` – **set only by the user**
 - `rejected`
-- `superseded by ADR-NNNN` – accepted ADRs are never edited; a new ADR replaces them
+- `superseded by ADR-NNNN` – a changed decision is a new ADR that replaces the accepted one
+
+## Editorial changes
+
+An accepted ADR keeps its decision. An editorial fix – a typo, an outdated file path, formatting – is allowed when
+the same edit adds a dated line to an `## Editorial changes` section at the end of the ADR. `status` stays
+`accepted`, and earlier lines stay:
+
+```md
+## Editorial changes
+- 2026-11-22: path `src/orders/` → `apps/orders/` after the move
+```
+
+The `protect-files` hook allows exactly that. Anything that changes what was decided, why or its consequences is
+not editorial: write a new ADR instead.
 
 ## Optional sections
 

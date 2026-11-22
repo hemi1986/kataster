@@ -253,7 +253,8 @@ assumes:
    discovery in the main session: revise the story, run the spec linter, and let the user approve it again
    (`/review-stories`). Work already done on the branch stays.
 3. New domain term → `CONTEXT.md` (domain-model skill). Architecture deviation → a `proposed` ADR (architect skill).
-   An accepted ADR is never edited; the hooks block it.
+   An accepted ADR's decision is never changed in place; the hooks block it (editorial fixes need an
+   `## Editorial changes` entry).
 4. A `done` story is never reopened – a change to finished behaviour is a new story.
 
 ## Foundation stories

@@ -90,7 +90,8 @@ is what to read when you are unsure where something belongs.
 - **`events.yaml` and stories are validated by a hook after every write**, including status changes. Fix errors
   immediately; never work around them.
 - **Tech stack only after event storming and domain model**, via ADR. New ADRs are `proposed`; only the user sets
-  `accepted`. Accepted ADRs are never edited, only superseded (a hook enforces it).
+  `accepted`. An accepted decision is only superseded, never changed in place; editorial fixes are logged under
+  `## Editorial changes` (a hook enforces both).
 - **The backlog is local by default.** `docs/stories/` is the backlog and no issue tracker is required. With
   `backlog.provider` = `jira` or `github` in `.claude/project.json`, the tracker is the source of truth and
   `docs/stories/` is its local mirror; sync through `/backlog-sync` and never edit `BACKLOG.md` by hand. Reviews and

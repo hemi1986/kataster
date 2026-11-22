@@ -36,7 +36,7 @@ Once code exists and contexts live in separate modules, context-specific decisio
 
 ### Challenge against existing decisions
 
-When a proposal conflicts with an accepted ADR, call it out immediately: "ADR 0002 says reports work offline, but this assumes a live connection. Do we supersede 0002?" Accepted ADRs are never edited; they are superseded by a new one.
+When a proposal conflicts with an accepted ADR, call it out immediately: "ADR 0002 says reports work offline, but this assumes a live connection. Do we supersede 0002?" An accepted decision is never changed in place; it is superseded by a new ADR. Only editorial fixes with an entry under `## Editorial changes` are allowed (`ADR-FORMAT.md`).
 
 ### Trace every decision back to a requirement
 
