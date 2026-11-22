@@ -25,6 +25,7 @@ import {
   remotePayload,
   renderIssue,
   setExternal,
+  localChangedSince,
   storyHash,
   writeStory,
   writeSyncState,
@@ -264,7 +265,7 @@ export function jiraImport(cfg: BacklogConfig, rawIssues: d.Obj[]): { lines: str
     const entry = state.stories[id];
     const localHash = existing ? storyHash(existing) : "";
     const remoteUnchanged = Boolean(entry && entry.remoteHash === remoteHash);
-    const localChanged = Boolean(existing && entry && localHash !== entry.localHash);
+    const localChanged = Boolean(existing && entry && localChangedSince(existing, entry.localHash));
 
     // Fresh clone: the state is not committed, the mirror is. Rebuild the state without touching the story.
     if (existing && !entry && payloadHash(renderIssue(existing, cfg)) === remoteHash) {
@@ -336,7 +337,7 @@ export function jiraStatus(cfg: BacklogConfig): { lines: string[]; drift: boolea
     if (!entry) {
       lines.push(`unknown    ${id}: linked to ${ext.key}, but no sync state yet – run jira-import once`);
       drift = true;
-    } else if (storyHash(story) !== entry.localHash) {
+    } else if (localChangedSince(story, entry.localHash)) {
       lines.push(`local      ${id}: local changes are not pushed to ${ext.key}`);
       drift = true;
     } else {

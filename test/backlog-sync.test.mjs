@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -220,4 +221,34 @@ test("push → pull is a no-op for a domain story", () => {
   assert.deepEqual(Object.keys(pulled.meta), Object.keys(pushed.meta));
   assert.deepEqual(pulled.meta, { ...pushed.meta, title: "Place an order now" });
   assert.equal(pulled.body, pushed.body);
+});
+
+test("a formatter rewriting the frontmatter is not a local change", () => {
+  const { dir, env } = githubRepo();
+  assert.equal(runNode(dir, "backlog-push.ts", env).code, 0);
+  const file = join(dir, "docs/stories/ST-001-place-an-order.md");
+  // What Prettier with singleQuote does, plus block lists and trailing whitespace.
+  const formatted = read(dir, "docs/stories/ST-001-place-an-order.md")
+    .replace('key: "1"', "key: '1'")
+    .replace("labels: [mvp]", "labels:\n  - mvp")
+    .replace("so that I get the goods.", "so that I get the goods.   ");
+  writeFileSync(file, formatted, "utf8");
+
+  const status = runNode(dir, "backlog-status.ts", env);
+  assert.equal(status.code, 0, status.out);
+  assert.match(status.out, /synced\s+ST-001 ↔ #1/);
+
+  writeFileSync(file, formatted.replace("priority: must", "priority: could"), "utf8");
+  assert.match(runNode(dir, "backlog-status.ts", env).out, /local\s+ST-001/);
+});
+
+test("a sync state with a byte hash from before 0.6.1 still matches", () => {
+  const { dir, env } = githubRepo();
+  assert.equal(runNode(dir, "backlog-push.ts", env).code, 0);
+  const stateFile = join(dir, ".claude", "state", "backlog-sync.json");
+  const state = JSON.parse(readFileSync(stateFile, "utf8"));
+  const bytes = read(dir, "docs/stories/ST-001-place-an-order.md");
+  state.stories["ST-001"].localHash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+  writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  assert.match(runNode(dir, "backlog-status.ts", env).out, /synced\s+ST-001 ↔ #1/);
 });

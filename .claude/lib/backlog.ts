@@ -329,8 +329,41 @@ export function contentHash(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
+/** Object keys sorted at every level, so key order and YAML style do not change a hash. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value as d.Obj).sort().map((k) => [k, canonical((value as d.Obj)[k])]));
+  }
+  return value;
+}
+
+/** Line endings, trailing whitespace and runs of blank lines are formatting, not content. */
+const normalizeBody = (body: string): string =>
+  body.replaceAll("\r\n", "\n").replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+
+/**
+ * Hash of a story's content: the parsed frontmatter plus the normalized body. A formatter that rewrites the YAML
+ * (quote style, flow or block lists, key order) or trims whitespace does not count as a local change. A file whose
+ * frontmatter does not parse falls back to the byte hash.
+ */
 export function storyHash(story: d.Story): string {
+  try {
+    const { meta, body } = d.parseFrontmatter(story.path);
+    return contentHash(JSON.stringify({ meta: canonical(meta), body: normalizeBody(body) }));
+  } catch {
+    return legacyStoryHash(story);
+  }
+}
+
+/** The byte hash sync states before 0.6.1 stored. */
+function legacyStoryHash(story: d.Story): string {
   return contentHash(readFileSync(story.path, "utf8"));
+}
+
+/** Whether the story differs from the state at the last sync. A legacy byte hash still counts as a match. */
+export function localChangedSince(story: d.Story, localHash: string): boolean {
+  return storyHash(story) !== localHash && legacyStoryHash(story) !== localHash;
 }
 
 export function payloadHash(payload: IssuePayload): string {
