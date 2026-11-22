@@ -127,14 +127,17 @@ async function init(options) {
     console.log(`${root} already has a Kataster installation – running upgrade.\n`);
     return upgrade({ ...options, _: ["upgrade", root] });
   }
+  const kind = options.brownfield ? "brownfield" : options.greenfield ? "greenfield" : detection.kind;
   console.log(`Installing into ${root}`);
   console.log(`Detected: ${detection.kind}, ${detection.languages.join(", ") || "no code yet"}${
     detection.frameworks.length ? `, ${detection.frameworks.join(", ")}` : ""
   }${detection.databases.length ? `, ${detection.databases.join(", ")}` : ""}${
     detection.repoTooling?.monorepo ? `, ${detection.repoTooling.kind} monorepo` : ""
-  }\n`);
+  }`);
+  // The flag wins over the detection; say so, or the line above reads as if the flag were ignored.
+  if (kind !== detection.kind) console.log(`Using: ${kind} (--${kind} overrides the detection)`);
+  console.log("");
 
-  const kind = options.brownfield ? "brownfield" : options.greenfield ? "greenfield" : detection.kind;
   const name = await ask("Project name", options.name || detection.packageName || basename(root), options);
   const uiLanguage = await ask("UI language (en, de, …)", options.uiLanguage || "en", options);
   const artifactLanguage = await ask("Language of docs and stories", options.artifacts || "en", options);

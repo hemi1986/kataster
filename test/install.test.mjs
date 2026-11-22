@@ -211,6 +211,14 @@ test("doctor reports a missing installation", () => {
   assert.match(result.out, /Workflow installed/);
 });
 
+test("init says when --greenfield overrides the detection", () => {
+  const dir = repo({ "package.json": "{}", "src/app.ts": "export const app = 1;\n" });
+  const result = run(["init", dir, "--yes", "--no-install", "--greenfield"]);
+  assert.equal(result.code, 0, result.out);
+  assert.match(result.out, /Using: greenfield \(--greenfield overrides the detection\)/);
+  assert.equal(json(dir, ".claude/project.json").kind, "greenfield");
+});
+
 test("doctor flags ADRs whose status is not in the frontmatter", () => {
   const dir = repo({
     "package.json": "{}",
