@@ -400,7 +400,9 @@ npx kataster doctor
 
 `upgrade` replaces workflow files, keeps project content (`CONTEXT.md`, `docs/`, `project.json`) and refuses to
 overwrite files you changed locally – it lists them instead. `--force` overwrites and writes a backup to
-`.kataster/backup/`.
+`.kataster/backup/`. A file you deleted stays deleted – a docs skeleton `README.md` you do not want, or
+`.claude/package-lock.json` in a pnpm repository; `upgrade --restore` brings such files back, and `doctor` fails if
+another workflow file still uses one.
 
 Project content includes `docs/workflow.md` and the context maps. An upgrade does not rewrite them; compare
 `docs/workflow.md` with `templates/docs/workflow.md` if you want the new rules in an existing project. The schema

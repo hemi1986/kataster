@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { sha } from "../src/util.mjs";
@@ -389,4 +389,73 @@ test("upgrade prunes the retired agent files", () => {
   assert.match(result.out, /locally modified/);
   assert.ok(!(".claude/agents/product-owner.md" in json(dir, ".claude/install.json").files), "pruned file leaves the manifest");
   assert.ok(".claude/agents/lead-dev.md" in json(dir, ".claude/install.json").files, "kept file stays tracked");
+});
+
+test("upgrade keeps files the project deleted, and --restore brings them back", () => {
+  const dir = repo({ "package.json": "{}" });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+
+  const removed = ["docs/research/README.md", "docs/stories/README.md", ".claude/package-lock.json"];
+  for (const file of removed) rmSync(join(dir, file));
+
+  for (let i = 0; i < 2; i += 1) {
+    const upgrade = run(["upgrade", dir, "--no-install"]);
+    assert.equal(upgrade.code, 0, upgrade.out);
+    assert.match(upgrade.out, /3 file\(s\) not re-created because the project deleted them/);
+    for (const file of removed) assert.ok(!existsSync(join(dir, file)), `${file} must stay deleted`);
+  }
+  const manifest = json(dir, ".claude/install.json");
+  assert.deepEqual(manifest.deleted, [".claude/package-lock.json", "docs/research/README.md", "docs/stories/README.md"]);
+  assert.ok(!(".claude/package-lock.json" in manifest.files), "a deleted file is no longer tracked");
+  assert.ok(manifest.seeded.includes("docs/prototypes/README.md"));
+
+  const doctor = run(["doctor", dir]);
+  assert.match(doctor.out, /✓ Deleted workflow files still referenced\s+\(3 deleted on purpose, none referenced\)/);
+
+  const restore = run(["upgrade", dir, "--no-install", "--restore"]);
+  assert.equal(restore.code, 0, restore.out);
+  for (const file of removed) assert.ok(existsSync(join(dir, file)), `${file} restored`);
+  assert.deepEqual(json(dir, ".claude/install.json").deleted, []);
+});
+
+test("an installation from before 0.6.3 counts a missing skeleton file as deleted", () => {
+  const dir = repo({ "package.json": "{}" });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  const manifestPath = join(dir, ".claude", "install.json");
+  const manifest = json(dir, ".claude/install.json");
+  delete manifest.seeded;
+  delete manifest.deleted;
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+  rmSync(join(dir, "docs/product/initiatives/README.md"));
+
+  const upgrade = run(["upgrade", dir, "--no-install"]);
+  assert.equal(upgrade.code, 0, upgrade.out);
+  assert.ok(!existsSync(join(dir, "docs/product/initiatives/README.md")));
+  assert.deepEqual(json(dir, ".claude/install.json").deleted, ["docs/product/initiatives/README.md"]);
+});
+
+test("a deleted file the project creates again is its own and is not overwritten", () => {
+  const dir = repo({ "package.json": "{}" });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  const skill = join(dir, ".claude/skills/grilling/SKILL.md");
+  rmSync(skill);
+  assert.equal(run(["upgrade", dir, "--no-install"]).code, 0);
+  writeFileSync(skill, "# Our own grilling\n", "utf8");
+
+  const upgrade = run(["upgrade", dir, "--no-install"]);
+  assert.equal(upgrade.code, 0, upgrade.out);
+  assert.match(upgrade.out, /conflict\s+\.claude\/skills\/grilling\/SKILL\.md/);
+  assert.equal(readFileSync(skill, "utf8"), "# Our own grilling\n");
+});
+
+test("doctor fails when a deleted workflow file is still referenced", () => {
+  const dir = repo({ "package.json": "{}" });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  rmSync(join(dir, ".claude/hooks/session-start.ts"));
+  assert.equal(run(["upgrade", dir, "--no-install"]).code, 0);
+  assert.ok(!existsSync(join(dir, ".claude/hooks/session-start.ts")));
+
+  const doctor = run(["doctor", dir]);
+  assert.equal(doctor.code, 1);
+  assert.match(doctor.out, /✗ Deleted workflow files still referenced\s+\(\.claude\/hooks\/session-start\.ts \(used by [^)]*\.claude\/settings\.json/);
 });

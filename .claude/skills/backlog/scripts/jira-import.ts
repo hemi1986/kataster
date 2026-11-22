@@ -13,12 +13,16 @@
  * Usage: node jira-import.ts --from <issues.json>
  */
 import { readFileSync } from "node:fs";
+import { parseArgs } from "../../../lib/args.ts";
 import { loadBacklogConfig } from "../../../lib/config.ts";
 import { jiraImport } from "../../../lib/backlog-jira.ts";
 
 const cfg = loadBacklogConfig();
-const fromIndex = process.argv.indexOf("--from");
-const from = fromIndex >= 0 ? process.argv[fromIndex + 1] : "";
+const args = parseArgs({
+  usage: "Usage: node .claude/skills/backlog/scripts/jira-import.ts --from <issues.json>\n  Imports Jira issue data into the local mirror.",
+  values: ["--from"],
+});
+const from = args.values.get("--from") ?? "";
 if (!from) {
   console.error("Usage: node jira-import.ts --from <issues.json>");
   process.exit(1);

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+Follow-ups from the 0.6.2 upgrade report in #8.
+
+- **`upgrade` keeps deleted files deleted.** A workflow file or docs skeleton file the project deleted is no longer
+  re-created; `.claude/install.json` remembers it under `deleted`, and the skeleton files the installer created under
+  `seeded`. `upgrade --restore` brings them back. Without `.claude/package-lock.json` the tooling install runs with
+  `--no-package-lock`. `doctor` fails when a deleted workflow file is still referenced, e.g. a hook in
+  `settings.json`. An installation from before this version counts a missing skeleton file as deleted.
+- **Backlog scripts no longer run on `--help`.** `backlog-push`, `backlog-pull`, `backlog-status`, `jira-plan`,
+  `jira-record` and `jira-import` print their usage for `--help`/`-h` and reject an unknown argument with exit 2
+  before touching the tracker or the mirror.
+
 ## 0.6.2 – 2026-11-22
 
 Follow-ups from #8.

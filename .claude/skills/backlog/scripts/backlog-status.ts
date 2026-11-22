@@ -2,10 +2,15 @@
  * Where does the backlog stand? Which stories are linked, which changed locally, which changed in the tracker?
  * Writes nothing. `--check` exits 1 when there is drift, so a CI job can use it.
  */
+import { parseArgs } from "../../../lib/args.ts";
 import { loadBacklogConfig } from "../../../lib/config.ts";
 import { statusGithub } from "../../../lib/backlog-github.ts";
 import { jiraStatus } from "../../../lib/backlog-jira.ts";
 
+const args = parseArgs({
+  usage: "Usage: node .claude/skills/backlog/scripts/backlog-status.ts [--check]\n  Shows the sync state; --check exits 1 on drift.",
+  flags: ["--check"],
+});
 const cfg = loadBacklogConfig();
 if (cfg.provider === "local") {
   console.log("Backlog: local – docs/stories/ is the backlog, nothing to sync.");
@@ -29,4 +34,4 @@ console.log(
       ? "\nThe local mirror is consistent with the last import – run the MCP pull to compare with Jira."
       : "\nEverything that is linked is in sync.",
 );
-process.exit(process.argv.includes("--check") && drift ? 1 : 0);
+process.exit(args.flags.has("--check") && drift ? 1 : 0);

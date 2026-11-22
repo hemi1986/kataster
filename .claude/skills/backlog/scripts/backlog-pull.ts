@@ -7,13 +7,17 @@
  * Usage: node backlog-pull.ts [--from <jira-issues.json>]
  */
 import { readFileSync } from "node:fs";
+import { parseArgs } from "../../../lib/args.ts";
 import { loadBacklogConfig } from "../../../lib/config.ts";
 import { pullGithub } from "../../../lib/backlog-github.ts";
 import { jiraImport } from "../../../lib/backlog-jira.ts";
 
 const cfg = loadBacklogConfig();
-const fromIndex = process.argv.indexOf("--from");
-const from = fromIndex >= 0 ? process.argv[fromIndex + 1] : "";
+const args = parseArgs({
+  usage: "Usage: node .claude/skills/backlog/scripts/backlog-pull.ts [--from <jira-issues.json>]\n  Pulls tracker changes into the local mirror.",
+  values: ["--from"],
+});
+const from = args.values.get("--from") ?? "";
 
 if (cfg.provider === "local") {
   console.log("Backlog: local – docs/stories/ is the backlog, nothing to pull.");

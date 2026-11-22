@@ -6,10 +6,14 @@
  *
  * Usage: node backlog-push.ts [ST-NNN ...]
  */
+import { parseArgs } from "../../../lib/args.ts";
 import { loadBacklogConfig } from "../../../lib/config.ts";
 import { pushGithub } from "../../../lib/backlog-github.ts";
 
-const ids = process.argv.slice(2).filter((arg) => /^ST-\d+$/i.test(arg));
+const { ids } = parseArgs({
+  usage: "Usage: node .claude/skills/backlog/scripts/backlog-push.ts [ST-NNN ...]\n  Publishes the given stories (default: all) to the tracker.",
+  ids: true,
+});
 const cfg = loadBacklogConfig();
 
 if (cfg.provider === "local") {
