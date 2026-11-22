@@ -208,23 +208,33 @@ export function parseIssue(
   if (cfg.provider !== "local") {
     clean.external = { provider: cfg.provider, key: issue.key, ...(issue.url ? { url: issue.url } : {}) };
   }
-  // Keep a stable key order: identity, classification, workflow, links, then the external reference.
-  const ordered: d.Obj = {
-    id: clean.id,
-    title: clean.title,
-    type: clean.type,
-    context: clean.context,
-    priority: clean.priority,
-    size: clean.size,
-    risk: clean.risk,
-    events: clean.events,
-    sources: clean.sources,
-    depends_on: clean.depends_on,
-    labels: clean.labels,
-    status: clean.status,
-    ...(clean.external ? { external: clean.external } : {}),
-  };
-  return { id, meta: ordered, body };
+  return { id, meta: orderMeta(clean, match ? meta : null), body };
+}
+
+/** Frontmatter keys in their canonical order: identity, classification, workflow, links. */
+const KNOWN_KEYS = ["id", "title", "type", "context", "priority", "size", "risk", "events", "sources", "depends_on", "labels", "status"];
+/** What an absent key means. A pull does not write such a default into a story that never had the key. */
+const ABSENT: d.Obj = { type: "story", context: "", priority: "should", size: null, risk: null, status: "draft" };
+const isAbsentValue = (key: string, value: unknown): boolean =>
+  Array.isArray(value) ? value.length === 0 : key in ABSENT && value === ABSENT[key];
+
+/**
+ * Keeps every key and a stable order, so a push followed by a pull is a no-op. With a machine block (`original`),
+ * its keys keep their order – including the ones the pull does not know, such as `aggregate`, `command` or `ui` –
+ * and a known key it lacks is added only when the tracker gives it a non-default value. Without one (an issue
+ * Kataster did not create), the full skeleton is written in the canonical order. The external reference comes last.
+ */
+function orderMeta(clean: d.Obj, original: d.Obj | null): d.Obj {
+  const ordered: d.Obj = {};
+  for (const key of original ? Object.keys(original) : []) {
+    if (key !== "external") ordered[key] = clean[key];
+  }
+  for (const key of KNOWN_KEYS) {
+    if (key in ordered) continue;
+    if (key === "id" || key === "title" || !original || !isAbsentValue(key, clean[key])) ordered[key] = clean[key];
+  }
+  if (clean.external) ordered.external = clean.external;
+  return ordered;
 }
 
 function reversePriority(priority: string | undefined, cfg: BacklogConfig): string | undefined {
@@ -319,8 +329,41 @@ export function contentHash(value: string): string {
   return createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
+/** Object keys sorted at every level, so key order and YAML style do not change a hash. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value as d.Obj).sort().map((k) => [k, canonical((value as d.Obj)[k])]));
+  }
+  return value;
+}
+
+/** Line endings, trailing whitespace and runs of blank lines are formatting, not content. */
+const normalizeBody = (body: string): string =>
+  body.replaceAll("\r\n", "\n").replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+
+/**
+ * Hash of a story's content: the parsed frontmatter plus the normalized body. A formatter that rewrites the YAML
+ * (quote style, flow or block lists, key order) or trims whitespace does not count as a local change. A file whose
+ * frontmatter does not parse falls back to the byte hash.
+ */
 export function storyHash(story: d.Story): string {
+  try {
+    const { meta, body } = d.parseFrontmatter(story.path);
+    return contentHash(JSON.stringify({ meta: canonical(meta), body: normalizeBody(body) }));
+  } catch {
+    return legacyStoryHash(story);
+  }
+}
+
+/** The byte hash sync states before 0.6.1 stored. */
+function legacyStoryHash(story: d.Story): string {
   return contentHash(readFileSync(story.path, "utf8"));
+}
+
+/** Whether the story differs from the state at the last sync. A legacy byte hash still counts as a match. */
+export function localChangedSince(story: d.Story, localHash: string): boolean {
+  return storyHash(story) !== localHash && legacyStoryHash(story) !== localHash;
 }
 
 export function payloadHash(payload: IssuePayload): string {

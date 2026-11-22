@@ -223,3 +223,31 @@ test("sources survive the GitHub and Jira round-trip", () => {
     assert.deepEqual(parseIssue(remote, cfg, { contexts: ["BC-Order"] }).meta.sources, withSources.meta.sources);
   }
 });
+
+test("a push → pull round trip keeps domain fields and adds no defaults", () => {
+  const domain = {
+    ...story,
+    meta: {
+      id: "ST-002",
+      title: "Confirm an order",
+      type: "domain",
+      context: "BC-Order",
+      aggregate: "AGG-Order",
+      command: "CMD-ConfirmOrder",
+      ui: true,
+      priority: "must",
+      events: ["EVT-OrderConfirmed"],
+      labels: [],
+      status: "draft",
+    },
+  };
+  const chore = { ...story, meta: { id: "ST-003", title: "Set up CI", type: "task", status: "draft" } };
+  for (const local of [domain, chore]) {
+    const payload = renderIssue(local, github);
+    const remote = { key: "7", title: payload.title, body: payload.body, labels: payload.labels, state: "open" };
+    const { external, ...meta } = parseIssue(remote, github, { contexts: ["BC-Order"] }).meta;
+    assert.deepEqual(meta, local.meta);
+    assert.deepEqual(Object.keys(meta), Object.keys(local.meta));
+    assert.equal(external.key, "7");
+  }
+});

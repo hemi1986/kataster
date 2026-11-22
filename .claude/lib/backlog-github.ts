@@ -21,6 +21,7 @@ import {
   remotePayload,
   renderIssue,
   setExternal,
+  localChangedSince,
   storyHash,
   writeStory,
   writeSyncState,
@@ -206,7 +207,7 @@ export function pushGithub(cfg: BacklogConfig, ids: string[] = []): SyncReport {
     }
     const sentHash = payloadHash(payload);
     const currentRemoteHash = payloadHash(remotePayload(remote, cfg));
-    const localChanged = entry ? storyHash(story) !== entry.localHash : true;
+    const localChanged = entry ? localChangedSince(story, entry.localHash) : true;
     const remoteChanged = entry ? currentRemoteHash !== entry.remoteHash : false;
 
     if (remoteChanged && !localChanged) {
@@ -293,7 +294,7 @@ export function pullGithub(cfg: BacklogConfig): SyncReport {
     const entry = state.stories[id];
     const localHash = existing ? storyHash(existing) : "";
     const remoteUnchanged = Boolean(entry && entry.remoteHash === remoteHash);
-    const localChanged = Boolean(existing && entry && localHash !== entry.localHash);
+    const localChanged = Boolean(existing && entry && localChangedSince(existing, entry.localHash));
 
     // Fresh clone: the mirror is committed, the sync state is not. If the local story already renders to the same
     // issue, only the state is missing – no conflict, no backup, no rewrite.
@@ -380,7 +381,7 @@ export function statusGithub(cfg: BacklogConfig): { lines: string[]; drift: bool
       drift = true;
       continue;
     }
-    const localChanged = storyHash(story) !== entry.localHash;
+    const localChanged = localChangedSince(story, entry.localHash);
     const remoteChanged = payloadHash(remotePayload(remote, cfg)) !== entry.remoteHash;
     if (localChanged && remoteChanged) {
       lines.push(`conflict   ${id}: local and GitHub changed since the last sync`);

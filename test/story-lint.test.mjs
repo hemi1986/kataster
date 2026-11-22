@@ -375,3 +375,47 @@ test("a missing local research file warns and does not satisfy the gate", () => 
   assert.match(blocked.out, /no resolvable source/);
   assert.match(blocked.out, /docs\/research\/missing\.md/);
 });
+
+const germanStory = (sentence) =>
+  story(scenarios(2)).replace("As a customer, I want to place an order, so that I get the goods.", sentence);
+const profile = (dir, data) => {
+  const current = JSON.parse(readFileSync(join(dir, ".claude", "project.json"), "utf8"));
+  write(dir, ".claude/project.json", JSON.stringify({ ...current, ...data }, null, 2));
+};
+
+test("German artifacts accept the German story sentence, and English stays valid", () => {
+  for (const sentence of [
+    "Als Kunde möchte ich eine Bestellung aufgeben, damit ich die Ware bekomme.",
+    "Als Kundin will ich bestellen, sodass die Ware kommt.",
+    "Als Kunde möchte ich den Warenkorb absenden, um die Ware zu erhalten.",
+    "As a customer, I want to place an order, so that I get the goods.",
+  ]) {
+    const dir = setup(germanStory(sentence));
+    profile(dir, { languages: { artifacts: "de" } });
+    const result = lint(dir, ["ST-001"]);
+    assert.equal(result.code, 0, `${sentence}\n${result.out}`);
+  }
+});
+
+test("the sentence error names the form of the artifact language", () => {
+  const dir = setup(germanStory("Kunde bestellt Ware."));
+  profile(dir, { languages: { artifacts: "de" } });
+  const result = lint(dir, ["ST-001"]);
+  assert.notEqual(result.code, 0);
+  assert.match(result.out, /Als <Rolle> möchte ich <Ziel>, damit <Nutzen>/);
+
+  const english = setup(germanStory("Als Kunde möchte ich bestellen, damit ich Ware bekomme."));
+  assert.notEqual(lint(english, ["ST-001"]).code, 0, "German sentence must fail with English artifacts");
+});
+
+test("a custom sentence pattern from the profile is accepted, an invalid one is an error", () => {
+  const dir = setup(germanStory("En tant que client, je veux commander, afin de recevoir la marchandise."));
+  profile(dir, { languages: { artifacts: "fr" }, stories: { sentencePattern: "\\bEn tant que\\b.+?\\bje veux\\b.+?\\bafin de\\b" } });
+  const ok = lint(dir, ["ST-001"]);
+  assert.equal(ok.code, 0, ok.out);
+
+  profile(dir, { languages: { artifacts: "fr" }, stories: { sentencePattern: ["(unclosed"] } });
+  const broken = lint(dir, ["ST-001"]);
+  assert.notEqual(broken.code, 0);
+  assert.match(broken.out, /stories\.sentencePattern is not a valid regular expression/);
+});

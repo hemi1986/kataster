@@ -61,3 +61,5 @@ Method: preloaded skills `domain-model` (language, contexts, aggregates, data mo
 
 ## Output (reply to the main session)
 Summary of changes, glossary terms added/changed, proposed ADRs with their key statement, decisions the user has to make (max. 3 questions), new hotspots.
+
+You have no shell, so you cannot run the project's formatter or linter. Name the files you wrote; the main session formats them.

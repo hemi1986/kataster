@@ -211,6 +211,26 @@ test("doctor reports a missing installation", () => {
   assert.match(result.out, /Workflow installed/);
 });
 
+test("init says when --greenfield overrides the detection", () => {
+  const dir = repo({ "package.json": "{}", "src/app.ts": "export const app = 1;\n" });
+  const result = run(["init", dir, "--yes", "--no-install", "--greenfield"]);
+  assert.equal(result.code, 0, result.out);
+  assert.match(result.out, /Using: greenfield \(--greenfield overrides the detection\)/);
+  assert.equal(json(dir, ".claude/project.json").kind, "greenfield");
+});
+
+test("doctor flags ADRs whose status is not in the frontmatter", () => {
+  const dir = repo({
+    "package.json": "{}",
+    "docs/adr/0001-use-events.md": "---\nstatus: accepted\n---\n\n# Use events\n",
+    "docs/adr/0002-use-postgres.md": "# Use Postgres\n\n- **Status:** Accepted\n",
+  });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  const out = run(["doctor", dir]).out;
+  assert.match(out, /✗ ADR status in frontmatter\s+\(docs\/adr\/0002-use-postgres\.md –/);
+  assert.doesNotMatch(out, /0001-use-events/);
+});
+
 test("upgrade migrates an installation made under the old name", () => {
   const dir = repo({
     "package.json": "{}",

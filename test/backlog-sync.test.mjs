@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { parseFrontmatter } from "../.claude/lib/discovery.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cli = resolve(here, "..", "bin", "kataster.mjs");
@@ -196,4 +198,57 @@ test("a conflict backs up the local story and lets the tracker win", () => {  co
   assert.match(pull.out, /conflict\s+ST-001/);
   assert.match(read(dir, "docs/stories/ST-001-place-an-order.md"), /title: Remote title/);
   assert.ok(existsSync(join(dir, ".kataster", "backup", "backlog")), "backup directory missing");
+});
+
+test("push → pull is a no-op for a domain story", () => {
+  const { dir, env } = githubRepo();
+  const file = join(dir, "docs/stories/ST-001-place-an-order.md");
+  writeFileSync(file, read(dir, "docs/stories/ST-001-place-an-order.md")
+    .replace("type: story", "type: domain\naggregate: AGG-Order\ncommand: CMD-PlaceOrder\nui: true"), "utf8");
+  assert.equal(runNode(dir, "backlog-push.ts", env).code, 0);
+  const pushed = parseFrontmatter(file);
+
+  // Change only the tracker title so the pull has to rewrite the mirror.
+  const stateFile = join(dir, "gh-state.json");
+  const state = JSON.parse(readFileSync(stateFile, "utf8"));
+  state.issues[0].title = "ST-001: Place an order now";
+  writeFileSync(stateFile, JSON.stringify(state, null, 2));
+
+  const pull = runNode(dir, "backlog-pull.ts", env);
+  assert.equal(pull.code, 0, pull.out);
+  // The pull re-serializes the YAML, so compare the parsed frontmatter (keys, order, values) and the body.
+  const pulled = parseFrontmatter(file);
+  assert.deepEqual(Object.keys(pulled.meta), Object.keys(pushed.meta));
+  assert.deepEqual(pulled.meta, { ...pushed.meta, title: "Place an order now" });
+  assert.equal(pulled.body, pushed.body);
+});
+
+test("a formatter rewriting the frontmatter is not a local change", () => {
+  const { dir, env } = githubRepo();
+  assert.equal(runNode(dir, "backlog-push.ts", env).code, 0);
+  const file = join(dir, "docs/stories/ST-001-place-an-order.md");
+  // What Prettier with singleQuote does, plus block lists and trailing whitespace.
+  const formatted = read(dir, "docs/stories/ST-001-place-an-order.md")
+    .replace('key: "1"', "key: '1'")
+    .replace("labels: [mvp]", "labels:\n  - mvp")
+    .replace("so that I get the goods.", "so that I get the goods.   ");
+  writeFileSync(file, formatted, "utf8");
+
+  const status = runNode(dir, "backlog-status.ts", env);
+  assert.equal(status.code, 0, status.out);
+  assert.match(status.out, /synced\s+ST-001 ↔ #1/);
+
+  writeFileSync(file, formatted.replace("priority: must", "priority: could"), "utf8");
+  assert.match(runNode(dir, "backlog-status.ts", env).out, /local\s+ST-001/);
+});
+
+test("a sync state with a byte hash from before 0.6.1 still matches", () => {
+  const { dir, env } = githubRepo();
+  assert.equal(runNode(dir, "backlog-push.ts", env).code, 0);
+  const stateFile = join(dir, ".claude", "state", "backlog-sync.json");
+  const state = JSON.parse(readFileSync(stateFile, "utf8"));
+  const bytes = read(dir, "docs/stories/ST-001-place-an-order.md");
+  state.stories["ST-001"].localHash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+  writeFileSync(stateFile, JSON.stringify(state, null, 2));
+  assert.match(runNode(dir, "backlog-status.ts", env).out, /synced\s+ST-001 ↔ #1/);
 });
