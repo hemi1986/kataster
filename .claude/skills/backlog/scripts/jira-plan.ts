@@ -6,10 +6,14 @@
  *
  * Usage: node jira-plan.ts [ST-NNN ...]
  */
+import { parseArgs } from "../../../lib/args.ts";
 import { loadBacklogConfig } from "../../../lib/config.ts";
 import { jiraPlan } from "../../../lib/backlog-jira.ts";
 
-const ids = process.argv.slice(2).filter((arg) => /^ST-\d+$/i.test(arg));
+const { ids } = parseArgs({
+  usage: "Usage: node .claude/skills/backlog/scripts/jira-plan.ts [ST-NNN ...]\n  Prints the mcp-atlassian calls that bring Jira in line with the local mirror.",
+  ids: true,
+});
 const cfg = loadBacklogConfig();
 
 if (cfg.provider !== "jira") {

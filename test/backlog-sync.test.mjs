@@ -252,3 +252,17 @@ test("a sync state with a byte hash from before 0.6.1 still matches", () => {
   writeFileSync(stateFile, JSON.stringify(state, null, 2));
   assert.match(runNode(dir, "backlog-status.ts", env).out, /synced\s+ST-001 ↔ #1/);
 });
+
+test("backlog scripts print usage for --help and reject unknown arguments without running", () => {
+  const { dir, env } = githubRepo();
+  for (const script of ["backlog-push.ts", "backlog-pull.ts", "backlog-status.ts", "jira-plan.ts", "jira-record.ts", "jira-import.ts"]) {
+    const help = run(process.execPath, [join(".claude", "skills", "backlog", "scripts", script), "--help"], dir, env);
+    assert.equal(help.code, 0, `${script}: ${help.out}`);
+    assert.match(help.out, new RegExp(`^Usage: node \\.claude/skills/backlog/scripts/${script.replace(".", "\\.")}`));
+  }
+  const typo = run(process.execPath, [join(".claude", "skills", "backlog", "scripts", "backlog-push.ts"), "--dryrun"], dir, env);
+  assert.equal(typo.code, 2, typo.out);
+  assert.match(typo.out, /Unknown argument: --dryrun/);
+  assert.ok(!existsSync(join(dir, "gh-state.json")), "no tracker call was made");
+  assert.doesNotMatch(read(dir, "docs/stories/ST-001-place-an-order.md"), /external:/);
+});

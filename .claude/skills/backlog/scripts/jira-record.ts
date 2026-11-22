@@ -7,12 +7,16 @@
  * Usage: node jira-record.ts --from <results.json>
  */
 import { readFileSync } from "node:fs";
+import { parseArgs } from "../../../lib/args.ts";
 import { loadBacklogConfig } from "../../../lib/config.ts";
 import { jiraRecord, type JiraRecord } from "../../../lib/backlog-jira.ts";
 
 const cfg = loadBacklogConfig();
-const fromIndex = process.argv.indexOf("--from");
-const from = fromIndex >= 0 ? process.argv[fromIndex + 1] : "";
+const args = parseArgs({
+  usage: "Usage: node .claude/skills/backlog/scripts/jira-record.ts --from <results.json>\n  Records the Jira keys returned by jira_create_issue.",
+  values: ["--from"],
+});
+const from = args.values.get("--from") ?? "";
 if (!from) {
   console.error("Usage: node jira-record.ts --from <results.json>");
   process.exit(1);

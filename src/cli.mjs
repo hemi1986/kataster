@@ -29,6 +29,7 @@ Options:
   --jira-project <key>  Jira project key (with --backlog jira)
   --github-repo <repo>  GitHub repository owner/name (with --backlog github; default: this repo)
   --force               Overwrite locally modified workflow files (backup is kept)
+  --restore             upgrade: re-create files the project deleted (default: they stay deleted)
   --no-install          Do not run "npm install --prefix .claude"
   --yes, -y             Non-interactive: accept the detected defaults
   --dry-run             Show what would happen, write nothing
@@ -48,6 +49,7 @@ function parse(argv) {
     else if (arg === "--brownfield") options.brownfield = true;
     else if (arg === "--greenfield") options.greenfield = true;
     else if (arg === "--force") options.force = true;
+    else if (arg === "--restore") options.restore = true;
     else if (arg === "--no-install") options.noInstall = true;
     else if (arg === "--yes" || arg === "-y") options.yes = true;
     else if (arg === "--dry-run") options.dryRun = true;
@@ -110,8 +112,13 @@ Useful commands afterwards:
 }
 
 function printSummary(installer) {
-  const { created, updated, conflicts } = installer.summary();
+  const { created, updated, conflicts, keptDeleted } = installer.summary();
   console.log(`\nDone: ${created} created, ${updated} updated.`);
+  if (keptDeleted.length) {
+    console.log(`\n${keptDeleted.length} file(s) not re-created because the project deleted them:`);
+    for (const k of keptDeleted) console.log(`  - ${k}`);
+    console.log("  Run `kataster upgrade --restore` to bring them back.");
+  }
   if (conflicts.length) {
     console.log(`\n${conflicts.length} file(s) kept because they were modified locally:`);
     for (const c of conflicts) console.log(`  - ${c}`);
@@ -192,7 +199,12 @@ async function init(options) {
 async function upgrade(options) {
   const root = resolve(options._[1] ?? ".");
   banner();
-  const installer = new Installer(root, { dryRun: options.dryRun, force: options.force, log: (line) => console.log(`  ${line}`) });
+  const installer = new Installer(root, {
+    dryRun: options.dryRun,
+    force: options.force,
+    restore: options.restore,
+    log: (line) => console.log(`  ${line}`),
+  });
   if (!installer.manifest) {
     console.log(`No installation found in ${root} – running init instead.\n`);
     return init({ ...options, _: ["init", root] });
@@ -272,6 +284,30 @@ function adrsWithoutStatus(root) {
     .sort();
 }
 
+/**
+ * Workflow files the project deleted that another installed file still points to – a hook in settings.json, an
+ * import in a script, a path in a skill. Such a deletion breaks the workflow, so doctor fails instead of the
+ * upgrade silently putting the file back.
+ */
+function referencedDeletions(root, manifest) {
+  const deleted = (manifest?.deleted ?? []).filter((key) => /^\.(claude|opencode)\//.test(key));
+  if (!deleted.length) return [];
+  const sources = [...Object.keys(manifest.files ?? {}), ".claude/settings.json", ".opencode/opencode.jsonc"];
+  const texts = [...new Set(sources)]
+    .filter((file) => !file.endsWith("package-lock.json") && existsSync(join(root, file)))
+    .map((file) => [file, readFileSync(join(root, file), "utf8")]);
+  const found = [];
+  for (const key of deleted) {
+    // Relative imports and $CLAUDE_PROJECT_DIR paths both contain the path below .claude/ or .opencode/.
+    // A bare file name such as package-lock.json is too generic to count as a reference; it needs the full path.
+    const below = key.replace(/^\.(claude|opencode)\//, "");
+    const needle = below.includes("/") ? below : key;
+    const by = texts.filter(([file, text]) => file !== key && text.includes(needle)).map(([file]) => file);
+    if (by.length) found.push({ file: key, by });
+  }
+  return found;
+}
+
 function doctor(options) {
   const root = resolve(options._[1] ?? ".");
   const checks = [];
@@ -288,6 +324,16 @@ function doctor(options) {
     ".opencode/agents/product-owner.md", ".opencode/agents/requirements-engineer.md", ".opencode/agents/lead-dev.md",
   ].filter((file) => existsSync(join(root, file)));
   add("No retired role-play agents", retired.length === 0, retired.join(", ") || "clean");
+  const referenced = referencedDeletions(root, manifest);
+  if (manifest?.deleted?.length) {
+    add(
+      "Deleted workflow files still referenced",
+      referenced.length === 0,
+      referenced.length
+        ? `${referenced.map((r) => `${r.file} (used by ${r.by.join(", ")})`).join("; ")} – run upgrade --restore`
+        : `${manifest.deleted.length} deleted on purpose, none referenced`,
+    );
+  }
   const profile = readJson(join(root, ".claude", "project.json"));
   add("Project profile", Boolean(profile?.name), profile?.name ?? "missing");
 

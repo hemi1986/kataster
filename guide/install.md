@@ -53,6 +53,11 @@ npx kataster upgrade
 - Workflow files you **did** change are kept and listed as conflicts; `--force` overwrites them and writes a backup
   to `.kataster/backup/<timestamp>/`.
 - Project content (`CONTEXT.md`, `docs/`, `.claude/project.json`) is never touched.
+- A file you deleted stays deleted – a workflow file or a docs skeleton file such as `docs/research/README.md`. The
+  manifest (`.claude/install.json`, key `deleted`) remembers it; `upgrade --restore` re-creates it. If you delete
+  `.claude/package-lock.json` (e.g. in a pnpm repository), the tooling install runs with `--no-package-lock`, so npm
+  does not write it back either. `doctor` fails when a deleted file is still used by another workflow file, such as a
+  hook listed in `.claude/settings.json`.
 - An installation made under the old name (La Guardia) is migrated in place: `.laguardia/` becomes `.kataster/`, the
   OpenCode adapter moves to `.opencode/plugins/kataster/`, and the marker blocks in `AGENTS.md`/`CLAUDE.md` are
   rewritten. `backlog.labelPrefix` in `project.json` is kept, so labels already in GitHub or Jira stay valid.
@@ -142,7 +147,9 @@ written as a bullet (`- **Status:** Accepted`) leaves the ADR unprotected; `doct
 
 **Upgrade reports conflicts** – those are files you changed. Review the diff, then either keep your version or run
 `upgrade --force` (a backup is written to `.kataster/backup/`).
-`upgrade --force` (backup is written).
+
+**A deleted file does not come back** – by design. Run `upgrade --restore` to re-create every deleted workflow and
+skeleton file. A file you deleted and then wrote yourself is kept and reported as a conflict.
 
 ## Uninstall
 

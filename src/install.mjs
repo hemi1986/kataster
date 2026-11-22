@@ -86,10 +86,11 @@ const OBSOLETE = [
 ];
 
 export class Installer {
-  constructor(root, { dryRun = false, force = false, log = () => {} } = {}) {
+  constructor(root, { dryRun = false, force = false, restore = false, log = () => {} } = {}) {
     this.root = resolve(root);
     this.dryRun = dryRun;
     this.force = force;
+    this.restore = restore;
     this.log = log;
     this.actions = [];
     this.manifestPath = join(this.root, ".claude", "install.json");
@@ -99,6 +100,26 @@ export class Installer {
     this.created = [];
     this.updated = [];
     this.skipped = [];
+    // A file the project deleted on purpose stays deleted on upgrade, like a removed conffile in dpkg: the manifest
+    // remembers it, and only `upgrade --restore` brings it back. `seeded` lists the docs skeleton files the installer
+    // has created; they are project content, so their hashes are not tracked, but a missing one was deleted.
+    this.deleted = new Set(restore ? [] : this.manifest?.deleted ?? []);
+    this.seeded = new Set(this.manifest?.seeded ?? []);
+    // A manifest from before 0.6.3 has no `seeded` list. Every skeleton file was created at init or on an earlier
+    // upgrade then, so a missing one counts as deleted.
+    this.legacySeeded = Boolean(this.manifest) && !Array.isArray(this.manifest.seeded);
+    this.shipped = new Set();
+    this.keptDeleted = [];
+  }
+
+  /** Records that a file the project deleted stays deleted. */
+  keepDeleted(path) {
+    const key = relPosix(this.root, path);
+    delete this.files[key];
+    this.deleted.add(key);
+    this.keptDeleted.push(key);
+    this.record("deleted", path, "deleted in the project – not re-created (upgrade --restore brings it back)");
+    return "deleted";
   }
 
   record(kind, path, detail = "") {
@@ -144,6 +165,14 @@ export class Installer {
     const existing = existsSync(path) ? read(path) : undefined;
     const hash = sha(content);
     const key = relPosix(this.root, path);
+    if (track && !merge) this.shipped.add(key);
+
+    const wasDeleted = this.deleted.has(key);
+    if (track && !merge && existing === undefined && !this.restore && (wasDeleted || key in (this.manifest?.files ?? {}))) {
+      return this.keepDeleted(path);
+    }
+    // A file the project had deleted and then created again is the project's own: never overwrite it silently.
+    if (wasDeleted) this.deleted.delete(key);
 
     if (existing === content) {
       if (track) this.files[key] = hash;
@@ -153,7 +182,7 @@ export class Installer {
     if (existing !== undefined && !merge) {
       const known = this.manifest?.files?.[key];
       const local = sha(existing);
-      const modifiedLocally = known !== undefined && local !== known;
+      const modifiedLocally = (known !== undefined && local !== known) || wasDeleted;
       if (modifiedLocally) {
         if (!this.force) {
           this.conflicts.push(key);
@@ -207,6 +236,7 @@ export class Installer {
   pruneObsolete(present) {
     for (const key of OBSOLETE) {
       if (present.has(key)) continue;
+      this.deleted.delete(key);
       if (!(key in (this.manifest?.files ?? {}))) continue;
 
       const path = join(this.root, key);
@@ -300,17 +330,32 @@ export class Installer {
     this.put(path, next, { merge: true });
   }
 
-  copyDocsSkeleton(profile) {    const source = join(PKG, "templates", "docs");
+  copyDocsSkeleton(profile) {
+    const source = join(PKG, "templates", "docs");
     if (!existsSync(source)) return;
     for (const file of walk(source)) {
-      const name = relative(source, file);
-      const target = join(this.root, "docs", name);
-      if (existsSync(target)) {
-        this.record("keep", target);
-        continue;
-      }
-      this.put(target, render(read(file), profile), { track: false });
+      this.seed(join(this.root, "docs", relative(source, file)), () => render(read(file), profile));
     }
+  }
+
+  /**
+   * Creates a skeleton file once. An existing one is project content and kept; a missing one that was seeded
+   * before was deleted by the project and stays deleted unless `--restore` is given.
+   */
+  seed(target, content) {
+    const key = relPosix(this.root, target);
+    this.shipped.add(key);
+    if (existsSync(target)) {
+      this.seeded.add(key);
+      this.deleted.delete(key);
+      this.record("keep", target);
+      return "kept";
+    }
+    const known = this.seeded.has(key) || this.deleted.has(key) || this.legacySeeded;
+    if (known && !this.restore) return this.keepDeleted(target);
+    this.deleted.delete(key);
+    this.seeded.add(key);
+    return this.put(target, content(), { track: false });
   }
 
   putContext(profile) {
@@ -360,11 +405,7 @@ export class Installer {
 
   putConventions(profile) {
     const path = join(this.root, "docs", "engineering", "conventions.md");
-    if (existsSync(path)) {
-      this.record("keep", path);
-      return;
-    }
-    this.put(path, render(read(join(PKG, "templates", "conventions.md")), profile), { track: false });
+    this.seed(path, () => render(read(join(PKG, "templates", "conventions.md")), profile));
   }
 
   updateGitignore() {
@@ -388,13 +429,18 @@ export class Installer {
       version: VERSION,
       installedAt: new Date().toISOString(),
       files: Object.fromEntries(Object.entries(this.files).sort(([a], [b]) => a.localeCompare(b))),
+      seeded: [...this.seeded].sort(),
+      // Only paths the payload still ships: a file the toolkit retired is no longer the installer's to remember.
+      deleted: [...this.deleted].filter((key) => this.shipped.has(key)).sort(),
     });
   }
 
   installToolingDependencies() {
     if (this.dryRun) return { ok: true, skipped: true };
     if (!existsSync(join(this.root, ".claude", "package.json"))) return { ok: true, skipped: true };
-    const r = spawnSync("npm", ["install", "--prefix", ".claude", "--no-audit", "--no-fund"], {
+    // A project that deleted the lockfile (e.g. a pnpm repository) must not get it back from npm either.
+    const lockfile = existsSync(join(this.root, ".claude", "package-lock.json")) ? [] : ["--no-package-lock"];
+    const r = spawnSync("npm", ["install", "--prefix", ".claude", "--no-audit", "--no-fund", ...lockfile], {
       cwd: this.root,
       stdio: "ignore",
     });
@@ -407,6 +453,7 @@ export class Installer {
       created: this.created.length,
       updated: this.updated.length,
       conflicts: this.conflicts,
+      keptDeleted: this.keptDeleted,
       actions: this.actions,
     };
   }
