@@ -17,6 +17,13 @@
   without the field.
 - **`/implement` tolerates collected metrics.** Uncommitted files under `docs/stories/metrics/` no longer block the
   clean-tree check; they are committed as `metrics: collect` on the story branch.
+- **Marathon planner.** `node .claude/skills/marathon/scripts/marathon-plan.ts [--n <workers>] [--json]` plans the
+  next wave of a marathon run: `ready` stories in backlog order whose `depends_on` are all `done`, that no worker has
+  claimed, that the run did not escalate and that are not handed over yet. A `failed` story may run again and keeps
+  its attempt count. The claim state (run ID, integration branch, claims, results, escalations) is read from
+  `.claude/state/marathon.json`, at the same path for both harnesses; the planner never writes it, and a broken file
+  is an error rather than an empty state. `--n` is the worker count, and only 1 is accepted until conflict keys
+  exist. The logic is `planWave()` in `lib/engineering.ts`, next to `nextStory()`.
 
 ## 0.6.3 – 2026-11-22
 

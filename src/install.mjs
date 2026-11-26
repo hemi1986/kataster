@@ -77,6 +77,7 @@ const ALLOW = [
   "Bash(node .claude/skills/backlog/scripts/*)",
   "Bash(node .claude/skills/implement/scripts/*)",
   "Bash(node .claude/skills/metrics/scripts/*)",
+  "Bash(node .claude/skills/marathon/scripts/*)",
   "Bash(gh issue *)",
   "Bash(gh label *)",
   "Bash(git status *)",
