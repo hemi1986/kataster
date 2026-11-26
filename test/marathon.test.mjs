@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { marathonStateErrors, planWave } from "../.claude/lib/engineering.ts";
+import { parseJsonc } from "../src/util.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cli = resolve(here, "..", "bin", "kataster.mjs");
@@ -192,7 +193,10 @@ test("marathon-plan.ts: refuses a broken state file and N > 1", () => {
   assert.equal(plan(dir, ["--bogus"]).code, 2);
 });
 
-test("install: Claude Code may run the marathon scripts without a prompt", () => {
-  const settings = JSON.parse(readFileSync(join(repo(), ".claude", "settings.json"), "utf8"));
+test("install: both harnesses may run the marathon scripts without a prompt", () => {
+  const dir = repo();
+  const settings = JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf8"));
   assert.ok(settings.permissions.allow.includes("Bash(node .claude/skills/marathon/scripts/*)"));
+  const config = parseJsonc(readFileSync(join(dir, ".opencode", "opencode.jsonc"), "utf8"));
+  assert.ok(config.permissions.some((r) => r.action === "shell" && r.resource === "node .claude/skills/marathon/scripts/*" && r.effect === "allow"));
 });

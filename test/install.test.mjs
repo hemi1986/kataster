@@ -3,7 +3,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { sha } from "../src/util.mjs";
+import { ALLOW, OPENCODE_ALLOW, PKG } from "../src/install.mjs";
+import { parseJsonc, sha } from "../src/util.mjs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -115,6 +116,46 @@ test("installs the workflow into an existing repository", () => {
   assert.equal(manifest.tool, "kataster");
   assert.ok(Object.keys(manifest.files).length > 50);
   assert.ok(!(".claude/project.json" in manifest.files), "project content is not managed");
+});
+
+test("OpenCode mirrors every Claude Code allow rule", () => {
+  assert.equal(OPENCODE_ALLOW.length, ALLOW.length, "every ALLOW entry needs an OpenCode rule");
+  for (const rule of OPENCODE_ALLOW) assert.deepEqual(Object.keys(rule), ["action", "resource", "effect"]);
+  assert.ok(OPENCODE_ALLOW.some((r) => r.action === "shell" && r.resource === "git status *" && r.effect === "allow"));
+  // The shipped template carries the same rules, so a fresh install and an upgrade end up alike.
+  const template = parseJsonc(readFileSync(join(PKG, ".opencode", "opencode.jsonc"), "utf8"));
+  assert.deepEqual(template.permissions, OPENCODE_ALLOW);
+
+  const dir = repo({ "package.json": "{}" });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  assert.deepEqual(parseJsonc(read(dir, ".opencode/opencode.jsonc")).permissions, OPENCODE_ALLOW);
+  assert.deepEqual(json(dir, ".claude/settings.json").permissions.allow, ALLOW);
+});
+
+test("merges the OpenCode rules into an existing config: the project's own first, ours once", () => {
+  const own = { action: "shell", resource: "*", effect: "ask" };
+  // Same rule as ours, other key order – not added twice.
+  const dup = { effect: "allow", resource: "git diff *", action: "shell" };
+  const dir = repo({
+    "package.json": "{}",
+    ".opencode/opencode.jsonc": `// ours\n${JSON.stringify({ model: "x/y", permissions: [own, dup] })}`,
+  });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  const config = parseJsonc(read(dir, ".opencode/opencode.jsonc"));
+  assert.equal(config.model, "x/y");
+  assert.deepEqual(config.permissions, [own, dup, ...OPENCODE_ALLOW.filter((r) => r.resource !== "git diff *")]);
+
+  // An installation from before the mirror has no rules at all: an upgrade adds every one.
+  const old = repo({ "package.json": "{}", ".opencode/opencode.jsonc": JSON.stringify({ watcher: { ignore: ["tmp/**"] } }) });
+  assert.equal(run(["init", old, "--yes", "--no-install"]).code, 0);
+  const upgraded = parseJsonc(read(old, ".opencode/opencode.jsonc"));
+  assert.deepEqual(upgraded.permissions, OPENCODE_ALLOW);
+  assert.ok(upgraded.watcher.ignore.includes("tmp/**"));
+
+  // Something other than a rule list is the project's business.
+  const odd = repo({ "package.json": "{}", ".opencode/opencode.jsonc": JSON.stringify({ permissions: { shell: "ask" } }) });
+  assert.equal(run(["init", odd, "--yes", "--no-install"]).code, 0);
+  assert.deepEqual(parseJsonc(read(odd, ".opencode/opencode.jsonc")).permissions, { shell: "ask" });
 });
 
 test("detects a greenfield repository and does not touch existing project docs", () => {

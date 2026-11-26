@@ -24,6 +24,11 @@
   `.claude/state/marathon.json`, at the same path for both harnesses; the planner never writes it, and a broken file
   is an error rather than an empty state. `--n` is the worker count, and only 1 is accepted until conflict keys
   exist. The logic is `planWave()` in `lib/engineering.ts`, next to `nextStory()`.
+- **OpenCode mirrors Claude Code's permissions.** Every entry of Claude Code's allow list becomes a `shell` rule in
+  `.opencode/opencode.jsonc` with the same pattern: the workflow scripts, `git status/diff/log`, `gh issue/label`.
+  A project that puts `shell` behind `ask` is no longer prompted for them. On upgrade the installer appends the
+  missing rules after the project's own, since OpenCode applies the last matching rule, and recognises a rule
+  regardless of key order. A `permissions` value that is not a rule list is left alone.
 
 ## 0.6.3 – 2026-11-22
 
