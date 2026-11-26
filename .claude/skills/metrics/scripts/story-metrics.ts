@@ -5,22 +5,29 @@
  *       Records a phase marker. On `end` the pass's tokens and times are appended to
  *       docs/stories/metrics/<target>.json. The PreToolUse hook (Claude Code) / the plugin (OpenCode) adds
  *       --harness, --session, --agent, --agent-type and --transcript; without them the marker carries time only.
- *   collect [--session <id>] [--stale] [--idle-minutes <n>]
+ *   collect [--session <id>] [--stale] [--idle-minutes <n>] [--since <ISO time>]
  *       Finalises runs: missing pass entries, passes left open, and the `unassigned` pot. The session hooks run it.
+ *       `--since` takes every run with a marker since then, idle or not – the end of a marathon run.
+ *   review <ST-NNN> <agent> --verdict <verdict> [--blocker n] [--major n] [--minor n] [--question n]
+ *       Records one review of a story – who reviewed, the verdict, the findings per severity – in the story's
+ *       metrics file. Whoever started the reviewer records it (a marathon run does it through marathon-state.ts).
  *   report [--story ST-NNN] [--feature <slug>] [--since YYYY-MM-DD] [--json]
  *       Tables per story, feature and size; cost from metrics.prices in .claude/project.json.
  */
 import type { Harness, Marker } from "../../../lib/metrics.ts";
-import { appendMarker, collectPass, collectRuns, HARNESSES, isPhase, normalizeTarget, PHASES, stateDir } from "../../../lib/metrics.ts";
+import type { ReviewVerdict } from "../../../lib/metrics.ts";
+import { appendMarker, appendReview, collectPass, collectRuns, HARNESSES, isPhase, isStoryTarget, normalizeTarget, PHASES, REVIEW_VERDICTS, SEVERITIES, stateDir } from "../../../lib/metrics.ts";
 import { collector } from "../../../lib/metrics-adapters.ts";
 import { ROOT } from "../../../lib/config.ts";
 
 const USAGE = `Usage:
   node .claude/skills/metrics/scripts/story-metrics.ts mark <ST-NNN|feature:<slug>> <phase> start|end
-  node .claude/skills/metrics/scripts/story-metrics.ts collect [--session <id>] [--stale] [--idle-minutes <n>]
+  node .claude/skills/metrics/scripts/story-metrics.ts collect [--session <id>] [--stale] [--idle-minutes <n>] [--since <ISO time>]
+  node .claude/skills/metrics/scripts/story-metrics.ts review <ST-NNN> <agent> --verdict <verdict> [--blocker <n>] [--major <n>] [--minor <n>] [--question <n>]
   node .claude/skills/metrics/scripts/story-metrics.ts report [--story ST-NNN] [--feature <slug>] [--since YYYY-MM-DD] [--json]
 
 Phases: ${PHASES.join(", ")}, review-<agent>
+Verdicts: ${REVIEW_VERDICTS.join(", ")}
 The hooks add --harness, --session, --agent, --agent-type and --transcript to 'mark' – do not pass them by hand.`;
 
 function fail(message: string): never {
@@ -101,18 +108,43 @@ if (command === "mark") {
 }
 
 if (command === "collect") {
-  const { pos, opts, flags } = parse(rest, ["--session", "--idle-minutes"], ["--stale"]);
+  const { pos, opts, flags } = parse(rest, ["--session", "--idle-minutes", "--since"], ["--stale"]);
   if (pos.length) fail(`Unexpected argument: ${pos[0]}`);
   const idle = opts.has("--idle-minutes") ? Number(opts.get("--idle-minutes")) : 30;
   if (!Number.isFinite(idle) || idle < 0) fail("--idle-minutes must be a number ≥ 0.");
+  const since = opts.has("--since") ? Date.parse(opts.get("--since")!) : undefined;
+  if (since !== undefined && !Number.isFinite(since)) fail("--since needs an ISO time, e.g. 2026-11-26T17:09:51Z.");
   const result = collectRuns(await collector(), {
     runs: opts.has("--session") ? [opts.get("--session")!] : undefined,
-    stale: flags.has("--stale") || !opts.has("--session"),
+    stale: since === undefined && (flags.has("--stale") || !opts.has("--session")),
     idleMs: idle * 60_000,
+    since,
   });
   for (const w of result.written) console.log(`${w.target} ${w.phase}: ${w.entries} ${w.entries === 1 ? "entry" : "entries"}`);
   if (!result.written.length) console.log("Nothing to collect.");
   for (const w of result.warnings) console.error(`⚠ ${w}`);
+  process.exit(0);
+}
+
+if (command === "review") {
+  const { pos, opts } = parse(rest, ["--verdict", ...SEVERITIES.map((x) => `--${x}`)], []);
+  if (pos.length !== 2) fail("review needs <ST-NNN> <agent>.");
+  const target = normalizeTarget(pos[0]);
+  if (!target || !isStoryTarget(target)) fail(`'${pos[0]}' is not a story id.`);
+  const agent = pos[1];
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(agent)) fail(`'${agent}' is not an agent name.`);
+  const verdict = opts.get("--verdict") as ReviewVerdict | undefined;
+  if (!verdict || !REVIEW_VERDICTS.includes(verdict)) fail(`--verdict must be one of ${REVIEW_VERDICTS.join(", ")}.`);
+  const counts = { blocker: 0, major: 0, minor: 0, question: 0 };
+  for (const severity of SEVERITIES) {
+    const raw = opts.get(`--${severity}`);
+    if (raw === undefined) continue;
+    if (!/^\d+$/.test(raw)) fail(`--${severity} needs a whole number ≥ 0, got '${raw}'.`);
+    counts[severity] = Number(raw);
+  }
+  const at = process.env.KATASTER_METRICS_NOW ?? new Date().toISOString();
+  const written = appendReview(ROOT, target, { agent, verdict, ...counts, at });
+  console.log(`${target} review by ${agent}: ${verdict.replaceAll("-", " ")} – ${written ? "recorded in docs/stories/metrics/" : "already recorded"}`);
   process.exit(0);
 }
 

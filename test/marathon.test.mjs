@@ -22,7 +22,20 @@ const backlog = (...stories) => new Map(stories.map((s) => [s.meta.id, s]));
 const ids = (plan) => plan.wave.map((w) => w.story.meta.id);
 
 function state(overrides = {}) {
-  return { version: 1, run: "run-1", integrationBranch: "marathon/run-1", claims: {}, results: {}, escalations: [], ...overrides };
+  return {
+    version: 1,
+    run: "run-1",
+    integrationBranch: "marathon/run-1",
+    base: "main",
+    status: "running",
+    startedAt: "2026-11-26T08:00:00.000Z",
+    limits: { maxStories: 6, maxFailures: 3, gateFoundation: true, budgetTokens: null, budgetUsd: null },
+    consecutiveFailures: 0,
+    claims: {},
+    results: {},
+    escalations: [],
+    ...overrides,
+  };
 }
 
 test("planWave: a story waits until every dependency is done", () => {
@@ -59,7 +72,7 @@ test("planWave: escalated stories are skipped", () => {
 
   const onlyEscalated = planWave(backlog(story("ST-001")), state({ escalations: [{ story: "ST-001", reason: "", at: "2026-11-26T10:00:00Z" }] }), 1);
   assert.deepEqual(ids(onlyEscalated), []);
-  assert.match(onlyEscalated.reason, /claimed, handed over or escalated/);
+  assert.match(onlyEscalated.reason, /claimed, merged or escalated/);
 });
 
 test("planWave: an empty backlog plans nothing and says why", () => {
@@ -72,7 +85,7 @@ test("planWave: an empty backlog plans nothing and says why", () => {
   assert.equal(nothingReady.reason, "no story is ready");
 });
 
-test("planWave: a resumed run keeps its claims, skips handed-over stories and retries failed ones", () => {
+test("planWave: a resumed run keeps its claims, skips merged stories and retries failed ones", () => {
   const stories = backlog(
     story("ST-001", { priority: "must" }),
     story("ST-002", { priority: "must" }),
@@ -87,17 +100,17 @@ test("planWave: a resumed run keeps its claims, skips handed-over stories and re
   assert.deepEqual(waiting.claimed, ["ST-001"]);
   assert.match(waiting.reason, /no free worker – 1 open claim/);
 
-  // The pass on ST-001 ended (handed over), ST-002 failed once: the next wave retries ST-002 and counts on.
+  // The pass on ST-001 ended (merged), ST-002 failed once: the next wave retries ST-002 and counts on.
   const resumed = state({
     results: {
-      "ST-001": { outcome: "handed-over", at: "2026-11-26T09:40:00Z", branch: "story/ST-001", attempts: 1 },
+      "ST-001": { outcome: "merged", at: "2026-11-26T09:40:00Z", branch: "story/ST-001", attempts: 1 },
       "ST-002": { outcome: "failed", at: "2026-11-26T10:10:00Z", attempts: 2 },
     },
   });
   const plan = planWave(stories, resumed, 1);
   assert.deepEqual(ids(plan), ["ST-002"]);
   assert.equal(plan.wave[0].attempts, 2);
-  assert.deepEqual(plan.handedOver, ["ST-001"]);
+  assert.deepEqual(plan.merged, ["ST-001"]);
   assert.equal(plan.eligible, 3);
 });
 
@@ -112,8 +125,11 @@ test("planWave: N is the worker count – the wave fills the free slots", () => 
 
 test("marathonStateErrors: names every broken field", () => {
   assert.deepEqual(marathonStateErrors(state()), []);
-  const errs = marathonStateErrors({ version: 2, claims: { "ST-001": { branch: "b" } }, results: { "ST-002": { outcome: "merged" } }, escalations: {} });
-  assert.equal(errs.length, 6, errs.join("\n"));
+  const errs = marathonStateErrors({ version: 2, claims: { "ST-001": { branch: "b" } }, results: { "ST-002": { outcome: "handed-over" } }, escalations: {} });
+  // version, run, integrationBranch, base, status, startedAt, consecutiveFailures, limits, the claim, the result, escalations
+  assert.equal(errs.length, 11, errs.join("\n"));
+  assert.match(marathonStateErrors(state({ status: "finished" })).join("\n"), /a finished run needs stop/);
+  assert.match(marathonStateErrors(state({ claims: { "ST-001": { branch: "b", start: "t", attempts: 1, phase: "coding" } } })).join("\n"), /phase must be/);
   assert.deepEqual(marathonStateErrors([]), ["the state is not a JSON object"]);
 });
 
@@ -185,6 +201,7 @@ test("marathon-plan.ts: refuses a broken state file and N > 1", () => {
   const invalid = plan(dir);
   assert.equal(invalid.code, 1);
   assert.match(invalid.out, /integrationBranch is missing/);
+  assert.match(invalid.out, /limits needs maxStories/);
 
   const two = plan(dir, ["--n", "2"]);
   assert.equal(two.code, 2);

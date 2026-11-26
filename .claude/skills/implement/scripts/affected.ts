@@ -14,6 +14,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { changedPaths } from "../../../lib/git.ts";
 import { ROOT, readRepoMap, scanRepo, type RepoMap, type RepoPackage } from "../../../lib/repo.ts";
 
 const args = process.argv.slice(2);
@@ -83,9 +84,7 @@ function git(args: string[]): string[] {
 function changedFiles(): string[] {
   if (changed.length) return [...new Set(changed.map((f) => relative(ROOT, resolve(ROOT, f)).split("\\").join("/")))];
   if (base) return git(["diff", "--name-only", base]);
-  return git(["status", "--porcelain", "--untracked-files=all"])
-    .map((line) => line.slice(3).trim().replace(/^.* -> /, ""))
-    .filter(Boolean);
+  return changedPaths(ROOT);
 }
 
 function packageForFile(map: RepoMap, file: string): RepoPackage | undefined {

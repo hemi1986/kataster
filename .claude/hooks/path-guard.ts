@@ -1,13 +1,16 @@
 /**
- * PreToolUse hook for subagents: only allows writes below the given path prefixes.
+ * PreToolUse hook for subagents: limits where an agent may write.
  *
- * Usage: node path-guard.ts docs/stories/ docs/reviews/
+ *   node path-guard.ts docs/stories/ docs/reviews/     only below these path prefixes
+ *   node path-guard.ts --deny CONTEXT.md docs/adr/     everywhere in the project except these files and prefixes
  */
 import { readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { rel, ROOT } from "../lib/discovery.ts";
 
-const allowed = process.argv.slice(2).map((a) => a.replace(/^\/+|\/+$/g, ""));
+const argv = process.argv.slice(2);
+const deny = argv[0] === "--deny";
+const prefixes = (deny ? argv.slice(1) : argv).map((a) => a.replace(/^\/+|\/+$/g, ""));
 
 let data: Record<string, any>;
 try {
@@ -25,10 +28,11 @@ if (r === path) {
   process.stderr.write(`Blocked: '${fp}' is outside the project.\n`);
   process.exit(2);
 }
-if (allowed.some((a) => r === a || r.startsWith(a + "/"))) process.exit(0);
+const listed = prefixes.some((a) => r === a || r.startsWith(a + "/"));
+if (listed !== deny) process.exit(0);
 
 process.stderr.write(
-  `Blocked: this agent may not write '${r}'. Allowed: ${allowed.join(", ")}. ` +
+  `Blocked: this agent may not write '${r}'. ${deny ? "Not its to change" : "Allowed"}: ${prefixes.join(", ")}. ` +
     "Report the requested change back to the main session instead.\n",
 );
 process.exit(2);

@@ -10,7 +10,7 @@ export interface ArgSpec {
   usage: string;
   /** Boolean flags, e.g. `--check`. */
   flags?: string[];
-  /** Options that take one value, e.g. `--from <file>`. */
+  /** Options that take one value, e.g. `--from <file>`. A lone `-` (stdin) is a value, any other `-…` is not. */
   values?: string[];
   /** Accept story ids (`ST-NNN`) as positional arguments. */
   ids?: boolean;
@@ -41,7 +41,7 @@ export function parseArgs(spec: ArgSpec, argv: string[] = process.argv.slice(2))
     if (spec.flags?.includes(name) && inline === undefined) flags.add(name);
     else if (spec.values?.includes(name)) {
       const value = inline ?? argv[++i];
-      if (value === undefined || value === "" || (inline === undefined && value.startsWith("-"))) fail(`${name} needs a value.`);
+      if (value === undefined || value === "" || (inline === undefined && value.startsWith("-") && value !== "-")) fail(`${name} needs a value.`);
       values.set(name, value);
     } else if (spec.ids && /^ST-\d+$/i.test(arg)) ids.push(arg);
     else fail(`Unknown argument: ${arg}`);

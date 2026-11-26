@@ -29,10 +29,24 @@ node .claude/skills/metrics/scripts/story-metrics.ts mark <ST-NNN|feature:<slug>
 | `/feature` | `feature:<slug>` | `grilling`, `event-storming`, `domain-architect`, `story-writing` |
 | `/review-stories` | `feature:<slug>` when the stories share a feature, otherwise each `ST-NNN` | `review-stories` |
 | `/implement` | `ST-NNN` | `kontext`, `testplan`, `characterization`, `implementierung`, `verify`, `review-<agent>` (one per reviewer, e.g. `review-code-reviewer`), `fixes`, `merge` |
+| `/marathon` (orchestrator) | `ST-NNN` | `review-<agent>`, `integration` (merge into the integration branch up to `done`), `verify` inside it; the worker marks the `/implement` phases |
 
 Spec work happens before story ids exist, so it is marked on the feature. Every story the feature derives carries
 `feature: <slug>` in its frontmatter (and the `feature:<slug>` label) – that link is how the report shares the
 feature's cost.
+
+## Reviews
+
+Whoever starts a reviewer records the outcome once its review file is there – the verdict and the findings per
+severity:
+
+```bash
+node .claude/skills/metrics/scripts/story-metrics.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n>
+```
+
+Verdicts: `accepted`, `accepted-with-remarks`, `not-accepted` (acceptance tester), `ready-to-merge`,
+`fix-blockers-first` (code reviewer). The record lands in the story's metrics file next to its entries and shows in
+`report --story`. In a marathon run `marathon-state.ts review` writes the same record – use that one there.
 
 ## What is measured
 

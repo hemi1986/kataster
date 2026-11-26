@@ -45,6 +45,7 @@ export const PHASES = [
   "implementierung",
   "verify",
   "fixes",
+  "integration",
   "merge",
 ] as const;
 const REVIEW_PHASE_RE = /^review-[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -301,10 +302,30 @@ export interface Entry {
   recorded: string;
 }
 
+/** Verdicts a reviewer can end on – the acceptance tester's three and the code reviewer's two. */
+export const REVIEW_VERDICTS = ["accepted", "accepted-with-remarks", "not-accepted", "ready-to-merge", "fix-blockers-first"] as const;
+export type ReviewVerdict = (typeof REVIEW_VERDICTS)[number];
+export const SEVERITIES = ["blocker", "major", "minor", "question"] as const;
+
+/** One review of a story: who reviewed, the verdict and the findings per severity. Recorded by whoever started the reviewer. */
+export interface ReviewRecord {
+  /** Unique within the file: `<agent>|<at>`. */
+  key: string;
+  agent: string;
+  verdict: ReviewVerdict;
+  blocker: number;
+  major: number;
+  minor: number;
+  question: number;
+  at: string;
+}
+
 export interface MetricsFile {
   version: 1;
   target: string;
   entries: Entry[];
+  /** Reviews of the story, oldest first. Missing in files written before reviews were recorded. */
+  reviews?: ReviewRecord[];
 }
 
 export function readMetricsFile(path: string): MetricsFile | null {
@@ -316,8 +337,16 @@ export function readMetricsFile(path: string): MetricsFile | null {
 
 /** One entry per line, so a diff shows appended entries as appended lines. */
 function renderMetricsFile(file: MetricsFile): string {
-  const lines = file.entries.map((e) => JSON.stringify(e));
-  return `{"version":1,"target":${JSON.stringify(file.target)},"entries":[\n${lines.join(",\n")}\n]}\n`;
+  const lines = (list: unknown[]): string => (list.length ? `\n${list.map((x) => JSON.stringify(x)).join(",\n")}\n` : "");
+  const reviews = file.reviews?.length ? `,"reviews":[${lines(file.reviews)}]` : "";
+  return `{"version":1,"target":${JSON.stringify(file.target)},"entries":[${lines(file.entries)}]${reviews}}\n`;
+}
+
+function writeMetricsFile(path: string, file: MetricsFile): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, renderMetricsFile(file), "utf8");
+  renameSync(tmp, path);
 }
 
 /** Appends entries whose key is not in the file yet. Returns the number written. */
@@ -330,11 +359,21 @@ export function appendEntries(root: string, target: string, entries: Entry[]): n
     const fresh = entries.filter((e) => !known.has(e.key));
     if (!fresh.length) return 0;
     file.entries.push(...fresh);
-    mkdirSync(dirname(path), { recursive: true });
-    const tmp = `${path}.${process.pid}.tmp`;
-    writeFileSync(tmp, renderMetricsFile(file), "utf8");
-    renameSync(tmp, path);
+    writeMetricsFile(path, file);
     return fresh.length;
+  });
+}
+
+/** Appends a review to a story's metrics file. Returns false when the same review (agent and time) is there already. */
+export function appendReview(root: string, target: string, review: Omit<ReviewRecord, "key">): boolean {
+  const path = targetFile(root, target);
+  const record: ReviewRecord = { key: `${review.agent}|${review.at}`, ...review };
+  return withLock(path, () => {
+    const file = readMetricsFile(path) ?? { version: 1 as const, target, entries: [] };
+    if (file.reviews?.some((r) => r.key === record.key)) return false;
+    file.reviews = [...(file.reviews ?? []), record];
+    writeMetricsFile(path, file);
+    return true;
   });
 }
 
@@ -800,9 +839,12 @@ export function collectPass(endMarker: Marker, col: Collector): CollectResult {
 /**
  * Finalises runs: writes every pass entry not written yet (self-healing after a failed `end`), closes passes the
  * session left open (except gates like `merge`), and moves everything outside a pass into the `unassigned` pot.
- * Runs are picked by id, or – `stale` – every run with markers whose last activity is older than `idleMs`.
+ * Runs are picked by id, or – `stale` – every run with markers whose last activity is older than `idleMs`, or –
+ * `since` (ms) – every run with a marker at or after that time, idle or not: the end of a marathon run collects its
+ * sessions this way before the pull request, while the orchestrator's own session is still open. A later collection
+ * goes on from where this one stopped (`finalized.json`), so nothing is counted twice.
  */
-export function collectRuns(col: Collector, opts: { runs?: string[]; stale?: boolean; idleMs?: number; exclude?: string[] }): CollectResult {
+export function collectRuns(col: Collector, opts: { runs?: string[]; stale?: boolean; idleMs?: number; exclude?: string[]; since?: number }): CollectResult {
   const result: CollectResult = { written: [], warnings: [] };
   const located = locateAll(readMarkers(col.dir), col, result.warnings);
   const { passes, warnings } = buildPasses(located);
@@ -812,11 +854,13 @@ export function collectRuns(col: Collector, opts: { runs?: string[]; stale?: boo
   const exclude = new Set(opts.exclude ?? []);
   const idle = opts.idleMs ?? 30 * 60_000;
 
+  const recent = opts.since === undefined ? null : new Set(located.filter((l) => Date.parse(l.marker.ts) >= opts.since!).map((l) => l.run));
   const chosen = new Map<string, { harness: Harness; transcript?: string }>();
   for (const [run, info] of allRuns) {
     if (exclude.has(run)) continue;
     if (opts.runs && !opts.runs.includes(run)) continue;
-    if (opts.stale) {
+    if (recent && !recent.has(run)) continue;
+    if (opts.stale && !recent) {
       const last = col.adapters[info.harness]?.lastActivity(run, info) ?? null;
       if (last === null || Date.now() - last < idle) continue;
       if ((finalized[run] ?? 0) >= last) continue;

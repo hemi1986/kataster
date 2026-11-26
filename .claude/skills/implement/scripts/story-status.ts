@@ -6,7 +6,9 @@
  *   done is final      – changes become a new story
  *   superseded         – from draft, review or ready: done elsewhere or replaced by a new planning; final as well
  *
- * Usage: node story-status.ts ST-010 in-progress|ready|done|review|superseded
+ * Usage: node story-status.ts ST-010 in-progress|ready|done|review|superseded [--no-tracker]
+ *
+ * `--no-tracker` changes the local mirror only – a marathon worker uses it, the tracker follows from its orchestrator.
  */
 import * as d from "../../../lib/discovery.ts";
 import * as e from "../../../lib/engineering.ts";

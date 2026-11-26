@@ -127,6 +127,25 @@ Review effort follows the risk of the diff, not a fixed checklist:
 The **acceptance tester decides** whether a story is done, not the user. The user reviews the pull request and
 merges. That keeps one checkpoint with the user (merge) instead of two.
 
+## Marathon runs
+
+`/implement` builds one story with you watching the pull request. `/marathon` builds several in a row without you:
+the main session becomes an **orchestrator** that only coordinates. It claims the next planned story, hands it to a
+**worker** (the `story-worker` agent in the worker mode of `/implement`), reads the worker's report, runs the same
+reviews as `/implement`, and merges the story into an **integration branch** `marathon/<date>` where the full gate
+runs again. At the end there is one pull request for the whole run.
+
+What the orchestrator would have to ask becomes an **escalation**: the story is set aside with its reason – a
+`blocked` report, a story sent back to review, a second `not accepted` – and the run goes on with the next one. A
+red `verify.ts` on the integration branch is different: the run stops at once, because every later story would
+build on a broken base.
+
+The run's state lives in `.claude/state/marathon.json` and has exactly one writer, `marathon-state.ts`. That is
+what makes a run resumable: after a closed session or a crash, `/marathon resume` reads the claims, continues a
+story whose branch exists and releases one whose branch does not. Limits keep a run bounded – stories per run,
+failures in a row, an optional token or cost budget from the story metrics, and a gate after the foundation tasks
+so that you can look at the foundation before the domain stories build on it.
+
 ## Story metrics
 
 Every workflow step is a marked phase: `story-metrics.ts mark <ST-NNN|feature:<slug>> <phase> start|end`. The

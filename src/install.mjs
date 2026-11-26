@@ -30,6 +30,9 @@ const LEGACY_MARKERS = [
   [/<!--\s*laguardia:claude:end\s*-->/, CLAUDE_END],
 ];
 
+/** The tools a superseded session could still change something with – writing, starting agents, scheduling. */
+const MARATHON_GUARD_MATCHER = "Bash|Write|Edit|MultiEdit|NotebookEdit|Agent|Task|SendMessage|CronCreate|RemoteTrigger|ScheduleWakeup";
+
 const HOOK_EVENTS = {
   SessionStart: [
     {
@@ -40,6 +43,11 @@ const HOOK_EVENTS = {
     },
   ],
   PreToolUse: [
+    // A marathon run blocks every session it superseded, and scheduling work for later while it runs.
+    {
+      matcher: MARATHON_GUARD_MATCHER,
+      hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/marathon-guard.ts"' }],
+    },
     {
       matcher: "Write|Edit|MultiEdit",
       hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-files.ts"' }],
@@ -347,6 +355,8 @@ export class Installer {
         ignore: mergeUnique(ours.watcher?.ignore ?? [], existing.watcher?.ignore ?? []),
       },
     };
+    // `automations: false` comes from ours unless the project set the key itself – an upgrade never turns them back on
+    // or off against the project's choice.
     // Permission rules: the project's own first, ours appended when missing. OpenCode applies the last matching rule,
     // so a project's catch-all `ask` does not prompt for the workflow scripts – like Claude Code's allow list. A
     // project that writes something other than a rule list keeps it untouched.
@@ -540,6 +550,11 @@ This repository runs the Kataster workflow. Discovery lives in \`.claude/skills/
 - **ADRs:** new ones are \`proposed\`; only the user sets \`accepted\`. A \`done\` story is never reopened.
 - **Reviews:** \`/implement\` scales review to the diff. \`code-reviewer\` and \`acceptance-tester\` report findings and
   never create stories; fast-lane stories skip the formal review pass.
+- **Worker:** \`/implement --worker ST-NNN --base <branch>\` (agent \`story-worker\`) builds one given story and
+  returns a JSON report instead of asking; an open decision is \`blocked\`, never code. It starts no subagent.
+- **Marathon:** \`/marathon\` makes the main session the orchestrator of a run: story after story it claims the
+  planned story, starts a \`story-worker\`, runs the reviews and merges into \`marathon/<date>\`; one pull request at
+  the end. \`.claude/state/marathon.json\` changes only through \`marathon-state.ts\`; \`/marathon resume\` goes on.
 - **Gate:** \`node .claude/skills/implement/scripts/verify.ts\`.
 - **Metrics:** workflow skills mark their phases with \`story-metrics.ts mark\` (the \`metrics\` skill); never edit
   \`docs/stories/metrics/\`, commit it with the work.

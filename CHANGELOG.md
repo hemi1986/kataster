@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+- **OpenCode automations off by default.** `.opencode/opencode.jsonc` ships `"automations": false`; init and upgrade
+  add it where the project did not set the key (a project's own value is kept). Why: in the marathon test run an
+  agent whose shell commands were denied searched the Code Mode tools for another way, and `automation.create` would
+  have run a shell command later – outside the session's permission rules and the Kataster hooks. `marathon-guard.ts`
+  still blocks creating one during a run for projects that turn them back on.
+- **Marathon: one session at a time, enforced.** A real run left two orchestrators and two workers on one checkout
+  (OpenCode runs sessions in its background service, a closed TUI stops nothing). The run now has a lease
+  (`.claude/state/marathon-lease.json`, `lib/lease.ts`): `start-run`/`resume` make the calling session the
+  orchestrator, `worker.ts start` the calling worker the holder of its story; the hooks append `--caller` to
+  `worker.ts` and `marathon-state.ts` calls (`hooks/metrics.ts`). A replaced session is refused by the scripts and
+  blocked on every tool call by the new `marathon-guard.ts` hook in both harnesses; `resume` supersedes the worker of
+  a continued claim at once. The `git status` heuristic in the skill is gone. Scheduling work for later (Claude Code's
+  cron/triggers/wakeups, OpenCode automations, also from a Code Mode script) is blocked while a run runs.
+- **Marathon: a report is never lost.** `worker.ts report` keeps the report of a claimed story
+  (`.claude/state/marathon-reports/ST-NNN.json`); `resume` prints `REPORT` and reads it instead of starting another
+  pass when the branch head is unchanged. A pass after a cut-off is counted as `resumed` and shown as such in the
+  summary – it is no failure.
+- **Decided with a default.** Worker reports carry `decisions` (`question`, `decision`, `why`) for technical details
+  the story and the conventions leave open; they do not block `ready-for-review`. The implement skill states when a
+  worker decides (technical, conservative, following the conventions, cheap to change) and that a missing rule is no
+  question; domain gaps stay `blocked`. `result … merged` takes them, the summary lists them under *Decided with a
+  default – confirm or change*. Reviewer questions no longer go into a worker's task.
+- **Merge gate.** `result … merged` refuses a `domain`, `tech-task` or `spike` story without an accepting
+  `acceptance-tester` review, and a stale repository map; the skill runs `repo-map.ts` after each merge (`AGENTS.md`
+  counts as bookkeeping for the generated block).
+- **Metrics before the pull request.** `story-metrics.ts collect --since <ISO time>` finalises every session with a
+  marker since then, idle or not; `finish` prints it with the run's start, so the pull request's metrics include the
+  tokens spent outside a phase (in OpenCode they were missing until the next session start).
+- **No heredocs in the skills.** Claude Code refuses a heredoc in `dontAsk` mode; `--details` JSON is written to
+  `.kataster/details/` and passed as a file.
+- **Input and errors.** The conventions template, the conventions skill and the foundation guidance ask how a
+  malformed request is answered, how text is normalised, which limits exist and in which time zone "today" is taken;
+  `/feature` grills validation, limits, normalisation and error behaviour per command.
+
 - **Story metrics.** `story-metrics.ts mark <ST-NNN|feature:<slug>> <phase> start|end` marks a phase; `/shape`,
   `/feature`, `/review-stories` and `/implement` mark theirs. Tokens (input, output incl. reasoning, cache
   read/write), model, harness, agent time and user wait time land append-only in `docs/stories/metrics/`, one entry
@@ -17,13 +51,91 @@
   without the field.
 - **`/implement` tolerates collected metrics.** Uncommitted files under `docs/stories/metrics/` no longer block the
   clean-tree check; they are committed as `metrics: collect` on the story branch.
+- **Marathon run.** `/marathon` makes the main session the orchestrator of an unattended run, serial for now. Setup
+  cuts the integration branch `marathon/<date>` from the default branch and starts the run with its limits: stories
+  per run (default 6), failures in a row (default 3), the foundation gate (on by default, `--no-gate-foundation`) and
+  an optional budget (`--budget-tokens`, `--budget-usd`) read from the story metrics. Per story the orchestrator
+  plans and claims, starts the `story-worker` with `/implement --worker ST-NNN --base marathon/<date>` and reads its
+  report: `blocked` and `returned-to-review` are escalated with their reason and the run goes on, `ready-for-review`
+  starts the reviewers in the lanes of `/implement` with `review-<agent>` markers. Findings go back to the worker –
+  the same agent session where the harness can continue one, otherwise a fresh worker on the same branch; the second
+  `not accepted` escalates the story. An accepted story is merged into the integration branch, `verify.ts` runs
+  there, the story is set `done`, the report's new terms and ADR proposals are written (the orchestrator alone gives
+  out ADR numbers), `BACKLOG.md` is rendered and the metrics are collected. The run stops when nothing is left to
+  plan, a limit or the budget is reached, the foundation tasks (`type: tech-task`) are merged and another story is
+  next, or `verify.ts` is red on the integration branch – then at once, and nothing is repaired. It ends with a push
+  and one pull request to the default branch (a draft after a red verify): summary, escalations with their reasons,
+  open questions and the metrics of the run's stories. The user merges.
+  - `node .claude/skills/marathon/scripts/marathon-state.ts` is the only writer of `.claude/state/marathon.json`:
+    `start-run`, `claim [--continue]`, `review`, `result merged|failed`, `escalate`, `release`, `resume`, `finish`;
+    `status` and `summary` read. Every write holds a lock file and replaces the state atomically (temp file +
+    rename) after validating it. A stale lock – its process is gone, or it is older than a minute – is broken with a
+    warning; a live one is waited for and then refused. A broken state file is an error for every command and is
+    never overwritten, and `protect-files.ts` blocks hand edits. Exit 3 means the run has to stop.
+  - `result ST-NNN merged` is checked against the facts: the story branch is in the integration branch, the last
+    `verify.ts` run is green, was on the integration branch and covers the merge, only docs and the glossary changed
+    since, and the story is `done`. A second failed pass of a story escalates it.
+  - **Resume.** `/marathon resume` (`marathon-state.ts resume`) goes on with a run that was cut off, also from the
+    other harness. A claim without a running worker is orphaned: with its story branch a worker continues on it and
+    the pass counts as an attempt; without the branch the claim is released; a story that is accepted or merged
+    already goes on with the merge step.
+  - **Both harnesses.** One skill (`.claude/skills/marathon/SKILL.md`); `.opencode/commands/marathon.md` only loads
+    it. Starting and continuing a worker is the one harness difference, documented in the skill: Claude Code uses
+    the `Agent` tool (`subagent_type: story-worker`) and `SendMessage`; OpenCode uses the `subagent` tool
+    (`agent: story-worker`), which returns a `sessionID` at once and delivers the report as a background result –
+    the same tool with that `sessionID` continues the worker (checked against OpenCode 2.4.1). The scripts are
+    covered by the existing allow rule for `.claude/skills/marathon/scripts/*` in `.claude/settings.json`,
+    `.opencode/opencode.jsonc` and the installer.
+  - The decisions are pure functions in `lib/marathon.ts` (`stopReason`, `reviewNext`, `orphanAction`,
+    `mergeErrors`, `nextStep`, `renderSummary`), tested without a repository or an agent.
 - **Marathon planner.** `node .claude/skills/marathon/scripts/marathon-plan.ts [--n <workers>] [--json]` plans the
   next wave of a marathon run: `ready` stories in backlog order whose `depends_on` are all `done`, that no worker has
-  claimed, that the run did not escalate and that are not handed over yet. A `failed` story may run again and keeps
-  its attempt count. The claim state (run ID, integration branch, claims, results, escalations) is read from
-  `.claude/state/marathon.json`, at the same path for both harnesses; the planner never writes it, and a broken file
-  is an error rather than an empty state. `--n` is the worker count, and only 1 is accepted until conflict keys
-  exist. The logic is `planWave()` in `lib/engineering.ts`, next to `nextStory()`.
+  claimed, that the run did not escalate and has not merged yet. A `failed` story may run again and keeps its
+  attempt count. The run state is read from `.claude/state/marathon.json`, at the same path for both harnesses; the
+  planner never writes it, and a broken file is an error rather than an empty state. When the run has to stop, the
+  wave is empty and `STOP` says why. `--n` is the worker count, and only 1 is accepted until conflict keys exist.
+  The logic is `planWave()` in `lib/engineering.ts`, next to `nextStory()`.
+- **Reviews in the story metrics.** `story-metrics.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n>`
+  records one review – who reviewed, the verdict, the findings per severity – next to the story's entries;
+  `report --story` shows them, `--json` carries them. `/implement` records its reviews this way, a marathon run
+  through `marathon-state.ts review`. New phase `integration` for the orchestrator's merge step.
+- **A worker cannot report `ready-for-review` for a story that could not be set `done`.** `worker.ts report` now
+  also refuses when a scenario has no test or a checklist item is unticked – the orchestrator sets `done` after the
+  merge and must not find out there. A worker ticks every checklist item, the last one too, and changes the story
+  status with `--no-tracker`: the tracker is synced by the orchestrator only.
+- **The quick gate waits for the worker.** `stop-gate.ts` does nothing while a marathon run holds a claim: the
+  uncommitted code is a worker's, and the session that ends its turn is the orchestrator waiting for it. The session
+  start names an unfinished run.
+- **Worker mode for `/implement`.** `/implement --worker ST-NNN --base <branch>` builds one given story for an
+  orchestrator: no auto-pick and no `git pull`, the story branch is cut from `--base` in the normal checkout, then
+  context pack, test plan, characterization, red → green and `verify.ts` run as in the manual mode, with the same
+  phase markers. The worker starts no reviews and ends after verify. Instead of asking the user it returns a JSON
+  report: `result` (`ready-for-review` | `blocked` | `returned-to-review`), `reason`, branch, commits, changed files,
+  the verify result, review findings and what became of them, new terms, ADR proposals and open questions. `blocked`
+  is a result of equal rank: an open domain or technical decision is reported, never decided in code. A worker is
+  resumable – when the story branch exists, the pass is a continuation that reads the branch and the review files,
+  fixes the findings in the same branch and reports again. The manual mode is unchanged.
+  - `node .claude/skills/implement/scripts/worker.ts start|report` are the mechanical ends of a pass. `start` checks
+    the base, the tree and the story's status on the base and creates or switches to the story branch. `report`
+    reads branch, commits, changed files and the verify result from git and the last `verify.ts` run, and refuses a
+    result the facts contradict – `ready-for-review` needs a clean tree, a green verify on the branch head and no
+    open question.
+  - New agent `story-worker` in both harnesses, the same instructions in each. That a worker starts no subagent is
+    enforced, not only written down: `disallowedTools: Agent` in Claude Code – where subagents may otherwise nest
+    three levels deep – and `subagent: deny` in OpenCode. Both also block questions and writes to `CONTEXT.md`,
+    `docs/adr/` and `docs/reviews/`; `path-guard.ts` learned `--deny` for that.
+  - Hooks in a worker: the tool hooks (protect-files, bash-guard, metrics identity, validate-docs, code-check,
+    project checks) run for subagents and child sessions in both harnesses. The quick gate at the end of a turn does
+    not – Claude Code fires `Stop` for the main session only, the OpenCode plugin skips child sessions – and that is
+    kept on purpose: the worker's gate is `verify.ts`, and a message after its last turn would produce a second
+    report.
+- **The quick gate no longer loses the first changed file.** `stop-gate.ts`, `characterize.ts` and `affected.ts`
+  trimmed the output of `git status --porcelain` before cutting off the status columns, which shifted the path of an
+  unstaged file: the Stop gate skipped the first modified file (and ran nothing when it was the only one), and
+  `affected.ts` lost every unstaged modification. All three now use `changedPaths()` in `lib/git.ts`
+  (`--porcelain -z`).
+- **`verify.ts` ignores collected metrics when it records `dirty`.** Uncommitted files under `docs/stories/metrics/`
+  no longer mark the verified code as changed, in line with the clean-tree check of `/implement`.
 - **OpenCode mirrors Claude Code's permissions.** Every entry of Claude Code's allow list becomes a `shell` rule in
   `.opencode/opencode.jsonc` with the same pattern: the workflow scripts, `git status/diff/log`, `gh issue/label`.
   A project that puts `shell` behind `ask` is no longer prompted for them. On upgrade the installer appends the

@@ -38,7 +38,8 @@ is what to read when you are unsure where something belongs.
 | Backlog mirror (with a tracker) | `docs/stories/` | `/backlog-sync` |
 | Backlog (generated!) | `docs/stories/BACKLOG.md` | hook – never edit manually |
 | Open questions | `docs/stories/OPEN_QUESTIONS.md` | everyone |
-| Story metrics (append-only) | `docs/stories/metrics/ST-NNN.json`, `feature-<slug>.json` | `story-metrics.ts mark … end` and the session hooks – never by hand; `report` derives cost and spec share |
+| Story metrics (append-only) | `docs/stories/metrics/ST-NNN.json`, `feature-<slug>.json` | `story-metrics.ts mark … end`, `review` and the session hooks – never by hand; `report` derives cost and spec share |
+| Marathon run (not committed) | `.claude/state/marathon.json` | `marathon-state.ts` only – locked, atomic, validated; a hook blocks hand edits |
 | Reviews | `docs/reviews/` | spec linter and `acceptance-tester`/`code-reviewer` (domain lane only; findings, no stories) |
 | Engineering conventions, seam catalog | `docs/engineering/conventions.md` | written after the foundation, user approves |
 | Application code and tests | `repo.codeRoots` in `.claude/project.json` | `/implement` |
@@ -64,7 +65,9 @@ is what to read when you are unsure where something belongs.
 | `ux-design` | how we decide the interface: the UX frontier, what a story says about a screen, review order |
 | `prototype` | throwaway HTML prototype for a UI or logic question; the verdict goes into the story and the guidelines |
 | `/groom-backlog` | periodic challenge of the open backlog |
-| `/implement [ST-NNN] [--fast]` | one story on its branch: domain = test-first, diff-scaled review, acceptance; chore/task or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first |
+| `/implement [ST-NNN] [--fast]` | one story on its branch: domain = test-first, diff-scaled review, acceptance; chore/task or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first; `--worker ST-NNN --base <branch>` = worker mode for an orchestrator |
+| `/marathon [resume]` | unattended run: the main session orchestrates – plan and claim, `story-worker`, reviews, merge into `marathon/<date>`, verify – one pull request at the end; `--max-stories`, `--max-failures`, `--no-gate-foundation`, `--budget-tokens`, `--budget-usd` |
+| `marathon-plan.ts`, `marathon-state.ts` | the next story of a run and why it stops; the run's state: `start-run`, `claim`, `review`, `result`, `escalate`, `release`, `resume`, `finish`, `status`, `summary` |
 | `tdd` | red → green loop, good tests, seams |
 | `codebase-design` | vocabulary for deep modules |
 | `/improve-codebase-architecture` | periodic scan for deepening opportunities, then grilling |
@@ -128,7 +131,11 @@ is what to read when you are unsure where something belongs.
   effort follows the diff (light lane for texts/layout, normal lane otherwise).
 - **Status changes** go through `node .claude/skills/implement/scripts/story-status.ts`. A `done` story is never
   reopened – changes become a new story.
-- **Never weaken or delete a test to get green.** One branch and one pull request per story; the user merges.
+- **Never weaken or delete a test to get green.** One branch and one pull request per story; the user merges. A
+  marathon run keeps one branch per story and hands over one pull request for the run.
+- **A marathon orchestrator builds nothing and decides nothing.** It writes no application code, repairs no red
+  verify and answers no open question: a story it cannot finish is escalated with its reason, and
+  `.claude/state/marathon.json` changes only through `marathon-state.ts`.
 - **Subagents don't know the conversation**: when delegating, pass file paths and a clear task.
 - **Adopt in slices, by concept.** One concept or domain plus at most one shared library per session; never the
   whole monorepo. In a layered repository a domain runs through `api/`, `services/` and `repositories/` – a
@@ -185,6 +192,34 @@ lane: prepare → test plan → **characterization net for untested existing beh
 Fast lane (`chore`/`task`, or `--fast`): prepare → implement → lint/typecheck/tests → `verify.ts` → pull request.
 **The user only merges.** `--prototype` settles an open UI question first; if it changes the story, the story goes
 back to `review`, through the linter and the user again. Start the next story in a fresh session.
+
+Worker mode: `/implement --worker ST-NNN --base <branch>` (agent `story-worker`) is the same engineering for an
+orchestrator instead of the user. The worker takes the given story, cuts the story branch from the given base
+without pulling, runs context pack → test plan → characterization → red/green → `verify.ts` with the usual phase
+markers, and ends there. It starts no reviews and asks no questions: it returns a JSON report
+(`worker.ts report`: `ready-for-review`, `blocked` or `returned-to-review`, plus branch, commits, changed files,
+verify result, new terms, ADR proposals, open questions). `blocked` is a result of equal rank – an open domain or
+technical decision is reported, never decided in code. The orchestrator runs the reviews, writes the glossary and
+ADRs, and starts the worker again with the findings; the worker continues on the same branch and reports again.
+
+Marathon: `/marathon` runs that orchestrator in the main session, one story at a time. Setup cuts the integration
+branch `marathon/<date>` from the default branch and starts the run through `marathon-state.ts start-run` – the only
+writer of `.claude/state/marathon.json` – with its limits: stories per run (6), failures in a row (3), the
+foundation gate (on) and an optional token or cost budget read from the story metrics. Per story: `marathon-plan.ts`
+names it, `claim` takes it, a `story-worker` builds it. `blocked` and `returned-to-review` are escalated with their
+reason and the run goes on. `ready-for-review` starts the reviewers in the lanes of `/implement`, with
+`review-<agent>` markers; each review is recorded with its verdict and findings per severity
+(`marathon-state.ts review`, which also writes the story metrics). Findings go back to the worker – the same agent
+session where the harness can continue it, otherwise a fresh worker on the same branch; a second `not accepted`
+escalates. An accepted story is merged into the integration branch, `verify.ts` runs there, the story is set
+`done`, the report's new terms go into `CONTEXT.md` and its ADR proposals become `proposed` ADRs with numbers the
+orchestrator alone gives out, `BACKLOG.md` is rendered and the metrics are collected. The run stops when nothing is
+left to plan, a limit or the budget is reached, the foundation tasks are merged, or `verify.ts` is red on the
+integration branch (at once, nothing is repaired). It ends with a push and one pull request to the default branch:
+summary, escalations with their reasons, open questions, the metrics of the run's stories. **The user merges.** A
+run that was cut off goes on with `/marathon resume`, also from the other harness: a claim whose worker is gone is
+continued on its story branch (the pass counts) or released when no branch exists. The tracker is synced by the
+orchestrator only; workers change the local mirror (`--no-tracker`).
 
 In a brownfield domain story, `characterize.ts` names the affected paths with no test. Characterization tests pin
 the current behaviour and are committed separately (`ST-NNN: characterize <area>`) **before** the story's red →

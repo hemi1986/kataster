@@ -75,6 +75,14 @@ Call the `skill` tool four times, for `grilling`, `domain-model`, `architect` an
 - **Product**: Which problem, for which user group, and what value? Measurable outcome? Does it fit the vision, or touch a non-goal? If it changes scope → update `docs/product/vision.md` with the user. Must vs. could – what ships first?
 - **Engineering**: Which existing code, data and stories change? Is there a migration? What is hard to test? Where does it cut into stories – one command per story, at most 4 scenarios?
 - Which existing processes, events and stories does it change? What's explicitly out of scope?
+- **Input – what does every command accept, and what not?** For each field: required or optional, its form (a
+  pattern, a range), its limits (length, amount – or explicitly none), how it is normalised before it is checked and
+  stored (trimmed, case-folded, as entered), and which values count as equal (an e-mail address in another letter
+  case). Then the error behaviour: what the actor sees for each rejection, and – where the conventions do not say it
+  already – for input that is not even the expected shape. Every value a scenario's outcome depends on is named
+  with a number or a rule (a loan period, a deadline, a threshold); a value nobody names becomes the worker's
+  question in the middle of a run. Answers that hold for every command go into `docs/engineering/conventions.md`
+  (*Input and errors*), the rest into the command's `rules` and the aggregate's `invariants` in `events.yaml`.
 - **UX – does a person see anything?** Almost always yes – then the UX frontier of `ux-design` belongs in the rounds: entry point, the screen's one job, what is shown before acting, what happens afterwards, the rejected, empty, full and no-permission cases, and the UI wording. A feature whose screens nobody named gets them by accident. Stories with a frontend part get `ui: true`.
 - **Prototype – is paper enough?** When the UX frontier leaves a structural layout choice, a flow or a state model that cannot be settled in words, the UX lens proposes a prototype: one question, the branch (`ui` or `logic`), the variants or scenarios, and a timebox. The user decides. `--prototype` makes it explicit. Do not propose one for polish or for a question a guideline already answers. If it is agreed, run step 2b before the event storming.
 - New or changed terms → `CONTEXT.md` inline.
