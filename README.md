@@ -128,7 +128,7 @@ Existing `CONTEXT.md` and `docs/` are never touched.
 | `/review-stories [ST-…]` | Spec linter gate → `ready-for-human-review`; the user approves `ready` |
 | `/backlog-sync [status\|pull\|push]` | Keep `docs/stories/` in sync with GitHub Issues or Jira |
 | `/groom-backlog [scope]` | Periodic challenge: is this backlog still worth building? |
-| `/implement [ST-NNN] [--fast]` | One story on its branch: domain = test-first, diff-scaled review, acceptance; `chore`/`task` or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first |
+| `/implement [ST-NNN] [--fast]` | One story on its branch: domain = test-first, diff-scaled review, acceptance; `chore`/`task` or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first; `--worker ST-NNN --base <branch>` is the worker mode an orchestrator starts |
 | `/improve-codebase-architecture` | Scan for deepening opportunities, present them, grill one |
 | `/retro` | Retrospective on a session, proposing rule changes |
 
@@ -392,6 +392,13 @@ For Jira, `jira-plan.ts` prints the exact MCP calls, `jira-record.ts` writes the
 - **Review agents** never write code or stories: `code-reviewer` and `acceptance-tester` report findings, the
   acceptance verdict decides whether a domain story is `done`, and a finding is fixed in the story or handed back
   as an open question. `ux-designer` is an on-demand utility (`ui: true`), never a gate.
+- **Worker mode** (`/implement --worker ST-NNN --base <branch>`, agent `story-worker`): an orchestrator hands one
+  story to a worker, which builds it on the story branch up to a green `verify.ts` and returns a JSON report
+  instead of asking – `ready-for-review`, `blocked` or `returned-to-review`, with the branch, commits, changed files
+  and verify result read from git by `worker.ts report`. An open domain or technical decision is `blocked`, never
+  code. The worker picks no story, pulls nothing, starts no reviewer and writes neither `CONTEXT.md` nor ADRs; the
+  orchestrator reviews and sends findings back to the same branch. The cut is identical in Claude Code and OpenCode
+  and enforced by the agent (no subagent tool, no questions).
 
 ## Story metrics
 

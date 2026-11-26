@@ -24,6 +24,36 @@
   `.claude/state/marathon.json`, at the same path for both harnesses; the planner never writes it, and a broken file
   is an error rather than an empty state. `--n` is the worker count, and only 1 is accepted until conflict keys
   exist. The logic is `planWave()` in `lib/engineering.ts`, next to `nextStory()`.
+- **Worker mode for `/implement`.** `/implement --worker ST-NNN --base <branch>` builds one given story for an
+  orchestrator: no auto-pick and no `git pull`, the story branch is cut from `--base` in the normal checkout, then
+  context pack, test plan, characterization, red → green and `verify.ts` run as in the manual mode, with the same
+  phase markers. The worker starts no reviews and ends after verify. Instead of asking the user it returns a JSON
+  report: `result` (`ready-for-review` | `blocked` | `returned-to-review`), `reason`, branch, commits, changed files,
+  the verify result, review findings and what became of them, new terms, ADR proposals and open questions. `blocked`
+  is a result of equal rank: an open domain or technical decision is reported, never decided in code. A worker is
+  resumable – when the story branch exists, the pass is a continuation that reads the branch and the review files,
+  fixes the findings in the same branch and reports again. The manual mode is unchanged.
+  - `node .claude/skills/implement/scripts/worker.ts start|report` are the mechanical ends of a pass. `start` checks
+    the base, the tree and the story's status on the base and creates or switches to the story branch. `report`
+    reads branch, commits, changed files and the verify result from git and the last `verify.ts` run, and refuses a
+    result the facts contradict – `ready-for-review` needs a clean tree, a green verify on the branch head and no
+    open question.
+  - New agent `story-worker` in both harnesses, the same instructions in each. That a worker starts no subagent is
+    enforced, not only written down: `disallowedTools: Agent` in Claude Code – where subagents may otherwise nest
+    three levels deep – and `subagent: deny` in OpenCode. Both also block questions and writes to `CONTEXT.md`,
+    `docs/adr/` and `docs/reviews/`; `path-guard.ts` learned `--deny` for that.
+  - Hooks in a worker: the tool hooks (protect-files, bash-guard, metrics identity, validate-docs, code-check,
+    project checks) run for subagents and child sessions in both harnesses. The quick gate at the end of a turn does
+    not – Claude Code fires `Stop` for the main session only, the OpenCode plugin skips child sessions – and that is
+    kept on purpose: the worker's gate is `verify.ts`, and a message after its last turn would produce a second
+    report.
+- **The quick gate no longer loses the first changed file.** `stop-gate.ts`, `characterize.ts` and `affected.ts`
+  trimmed the output of `git status --porcelain` before cutting off the status columns, which shifted the path of an
+  unstaged file: the Stop gate skipped the first modified file (and ran nothing when it was the only one), and
+  `affected.ts` lost every unstaged modification. All three now use `changedPaths()` in `lib/git.ts`
+  (`--porcelain -z`).
+- **`verify.ts` ignores collected metrics when it records `dirty`.** Uncommitted files under `docs/stories/metrics/`
+  no longer mark the verified code as changed, in line with the clean-tree check of `/implement`.
 - **OpenCode mirrors Claude Code's permissions.** Every entry of Claude Code's allow list becomes a `shell` rule in
   `.opencode/opencode.jsonc` with the same pattern: the workflow scripts, `git status/diff/log`, `gh issue/label`.
   A project that puts `shell` behind `ask` is no longer prompted for them. On upgrade the installer appends the

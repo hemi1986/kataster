@@ -1,8 +1,8 @@
 ---
 name: implement
-description: Engineering workflow – implements one story from docs/stories/ on its own branch, verifies, reviews scaled to the diff, refactors and hands the pull request to the user; `type: chore`/`task` (or `--fast`) takes the fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first.
+description: Engineering workflow – implements one story from docs/stories/ on its own branch, verifies, reviews scaled to the diff, refactors and hands the pull request to the user; `type: chore`/`task` (or `--fast`) takes the fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first; `--worker ST-NNN --base <branch>` builds one given story for an orchestrator up to a green verify and returns a report instead of asking.
 disable-model-invocation: true
-argument-hint: "[ST-NNN – empty = next ready story] [--fast] [--prototype[=ui|logic]]"
+argument-hint: "[ST-NNN – empty = next ready story] [--fast] [--prototype[=ui|logic]] | --worker ST-NNN --base <branch>"
 ---
 
 # Implement a Story
@@ -16,6 +16,10 @@ the user: the **merge** (step 7). Everything before it runs without asking – a
 up to the pull request, and the acceptance tester accepts the story, not the user – unless the story turns out to be
 wrong (see *When the story is wrong*), a seam is missing from the catalog (step 2), or the user asked for a prototype
 (step 1b – the verdict is theirs).
+
+`--worker ST-NNN --base <branch>` makes this session the **worker** of an orchestrator instead of the user's main
+session: read *Worker mode* at the end of this file before anything else. It replaces steps 1.1, 1.2, 1b, 5, 7 and 8
+and every question to the user. Without `--worker`, nothing in that section applies.
 
 ## Two lanes
 
@@ -292,3 +296,101 @@ The first stories build what all others rely on, so they also set up the workflo
   module layout, how a command runs (transaction, journal, authorization, version check), a read model, a
   time-based rule, UI texts, test data builders and the fixed clock, and the **seam catalog** – which seam each
   kind of code is tested at. The user approves it; then re-check the stories that depend on the foundation's results.
+
+## Worker mode (`--worker ST-NNN --base <branch>`)
+
+An orchestrator – a marathon run – started this session for exactly one story. The worker builds it on the story
+branch up to a green verify and ends with a **report**; it has no user. The cut is the same in Claude Code and
+OpenCode:
+
+| | Worker (this session) | Orchestrator |
+|---|---|---|
+| Story, base | given by the arguments; the base is used as it is in the checkout | picks the story, owns the base, pulls, syncs the tracker |
+| Steps | 1.3–1.5, 2, 2a, 3, 4 – on a continuation also 6 | 5 (reviews), 7 (`done`, push, pull request, merge), 8 |
+| Questions | become the report | talks to the user |
+| `CONTEXT.md`, `docs/adr/`, `docs/reviews/` | reads; proposes in the report | writes |
+| Subagents | none | starts the reviewers on the worker's branch |
+
+The worker runs everything itself, in this one session: reviewers, `ux-designer` and every other subagent, task or
+child session belong to the orchestrator – in both harnesses alike, also where the harness would let a worker start
+one. `--fast` works as in the manual mode. `--prototype` is a user's verdict: report `blocked`.
+
+### W1. Start the pass
+
+```bash
+node .claude/skills/implement/scripts/worker.ts start ST-NNN --base <branch>
+```
+
+This is the worker's whole preparation in place of steps 1.1, 1.2 and the `git switch` of 1.4: it checks that the
+base exists, the tree is clean and the story is `ready` on the base and linked to the tracker, then puts the checkout
+on the story branch. The story is the given one and the base is taken as it is – `next-story.ts`, `git pull`,
+`git fetch` and `/backlog-sync pull` are the orchestrator's.
+
+- `STOP` → nothing was switched: report `blocked` with those lines as the reason (W3).
+- `PASS first` → the branch is new, cut from the base. Go on with step 1.3, then 1.4 without its `git switch`, 1.5,
+  2, 2a, 3 and 4.
+- `PASS continuation` → the branch exists: review findings came back, a decision you were blocked on was made, or an
+  earlier pass was cut off. **The branch is the memory**, not this session: run step 1.3 again (`kontext start`,
+  the context pack, `kontext end`), read `git log <base>..HEAD`, the files listed under `REVIEWS` and whatever the
+  task adds (findings, the decision).
+  Then, in the same branch:
+  - **Findings** → step 6 with its markers (`fixes start` … `fixes end`): fix blockers and majors and the minors you
+    agree with, each in its own commit. Every finding goes into the report's `findings` as `fixed`, `skipped` (say
+    why in the text) or `open`. A finding without a recommended option, or too large for this story, is `open` and
+    gets an `openQuestions` entry – the pass ends `blocked`.
+  - **Unfinished work** (a `wip` commit, a scenario without its commit, a story still `ready`) → continue at the
+    first step that is not done.
+  - Then step 4 again, with its own `verify` markers.
+
+`METRICS` in the output: commit those files as `metrics: collect` before anything else, as step 1.1 says.
+
+### W2. Build – the same steps, the same markers
+
+Steps 1.3 to 4 run as written above, lane by lane, with the same phase markers (`kontext`, `testplan`,
+`characterization`, `implementierung`, `verify`; `fixes` on a continuation). Step 4 is the worker's only gate: the
+quick gate at the end of a turn runs for a main session, not for a worker that is a subagent or child session.
+
+Wherever a step says *stop*, *ask* or *tell the user*, the pass ends with a report instead:
+
+| What happened | Result |
+|---|---|
+| *When the story is wrong* applies: a contradiction with another story, a rule or an ADR; a scenario that cannot be tested as written; a decision the story leaves open; an `unresolved` aggregate; a characterization test that contradicts the story; a chore that turns out to be domain behaviour | Do steps 1–2 of that section on the branch (`[OPEN]`, the `OPEN_QUESTIONS.md` row, `story-status.ts ST-NNN review`), commit `ST-NNN: back to review` → `returned-to-review` |
+| The story is fine, but something it does not own is missing: a seam that is not in the catalog, a decision no ADR or convention covers, a term you would have to invent, a test runner, a spike's timebox, a tool or environment that fails, a verify that stays red after honest attempts, an `open` finding | `blocked` |
+| Every scenario (domain) or checklist item (fast lane) is built and step 4 is green | `ready-for-review` |
+
+**`blocked` is a result of equal rank.** An open domain or technical decision is never made in code: when you catch
+yourself choosing between options that the story, `events.yaml`, `CONTEXT.md`, the ADRs and the conventions do not
+settle, stop that part and report the question with its options. A precise `blocked` report is a good pass; a
+guessed implementation is a failed one, however green it is.
+
+**Proposals instead of edits.** A domain word the story uses and `CONTEXT.md` lacks goes into `newTerms`; a decision
+that deserves an ADR goes into `adrProposals`. When the code depends on a word or decision that nobody approved yet,
+it is an `openQuestions` entry as well, and the pass is `blocked`.
+
+**Every pass ends committed, on the story branch.** Close the phase you are in (`… end`), then commit: green work
+under its normal message, anything unfinished as `ST-NNN: wip <what is missing>`, `docs/stories/metrics/` after the
+last marker as `ST-NNN: metrics`. The story stays `in-progress` (or `review` when it went back); `done`, the push and
+the pull request are the orchestrator's.
+
+### W3. Report
+
+```bash
+node .claude/skills/implement/scripts/worker.ts report ST-NNN --base <branch> --result <result> --details - <<'JSON'
+{
+  "reason": "<why this result, in one or two sentences – for ready-for-review: what a reviewer should know, e.g. a fast-lane diff that touches authorization>",
+  "findings":      [{ "finding": "<the finding>", "action": "fixed|skipped|open" }],
+  "newTerms":      [{ "term": "<word>", "meaning": "<what it means here>" }],
+  "adrProposals":  [{ "title": "<decision>", "why": "<what depends on it, the options>" }],
+  "openQuestions": [{ "question": "<what has to be decided, with the options>", "kind": "domain|technical" }]
+}
+JSON
+```
+
+You pass your judgement; the script reads the rest from git and the last `verify.ts` run – branch, head, commits,
+changed files, uncommitted paths, the verify result – and prints the report as one JSON block. Empty lists may be
+left out. It refuses a result the facts contradict (exit 1): `ready-for-review` needs the story `in-progress`, a
+clean tree, a green verify on the branch head and no open question or finding; `returned-to-review` needs the story
+in `review` and its open question; `blocked` needs only its reason. Fix what it names, or report `blocked`.
+
+**Your last message is that JSON block, verbatim, and nothing after it.** The orchestrator parses it; it starts the
+reviews, and a later continuation brings their findings back to W1.

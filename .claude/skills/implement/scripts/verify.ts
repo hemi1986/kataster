@@ -16,6 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as d from "../../../lib/discovery.ts";
 import * as e from "../../../lib/engineering.ts";
+import { changedPaths, isMetricsPath } from "../../../lib/git.ts";
 
 const here = import.meta.dirname;
 const steps: e.VerifyState["steps"] = [];
@@ -87,7 +88,8 @@ e.writeVerifyState({
   at: new Date().toISOString(),
   branch: e.git("rev-parse", "--abbrev-ref", "HEAD"),
   commit: e.git("rev-parse", "--short", "HEAD"),
-  dirty: (e.git("status", "--porcelain") ?? "") !== "",
+  // Collected metrics are bookkeeping: they do not make the verified code "dirty".
+  dirty: changedPaths(d.ROOT).some((f) => !isMetricsPath(f)),
   ok,
   steps,
 });

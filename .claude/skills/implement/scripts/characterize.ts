@@ -16,6 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import * as d from "../../../lib/discovery.ts";
 import * as e from "../../../lib/engineering.ts";
+import { changedPaths } from "../../../lib/git.ts";
 import { readRepoMap, scanRepo, type RepoPackage } from "../../../lib/repo.ts";
 import { packageForFile } from "../../../lib/slices.ts";
 
@@ -79,10 +80,7 @@ const sourceFiles = e.projectFiles().filter((f) => e.isCode(f) && !e.isTestCode(
 function changedFiles(): string[] {
   if (changed.length) return [...new Set(changed)];
   if (base) return (e.git("diff", "--name-only", base) ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
-  return (e.git("status", "--porcelain", "--untracked-files=all") ?? "")
-    .split("\n")
-    .map((line) => line.slice(3).trim().replace(/^.* -> /, ""))
-    .filter(Boolean);
+  return changedPaths(d.ROOT);
 }
 
 function testBase(file: string): string {

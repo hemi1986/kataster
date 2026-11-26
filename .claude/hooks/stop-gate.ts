@@ -9,7 +9,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../lib/discovery.ts";
-import { appBin, git, isCode } from "../lib/engineering.ts";
+import { appBin, isCode } from "../lib/engineering.ts";
+import { changedPaths } from "../lib/git.ts";
 
 let data: Record<string, any>;
 try {
@@ -19,10 +20,9 @@ try {
 }
 if (data.stop_hook_active) process.exit(0);
 
-const changed = (git("status", "--porcelain", "--untracked-files=all") ?? "")
-  .split("\n")
-  .map((l) => l.slice(3).trim().replace(/^.* -> /, ""))
-  .filter((f) => f && !f.startsWith(".claude/") && !f.startsWith("docs/") && isCode(f) && existsSync(join(ROOT, f)));
+const changed = changedPaths(ROOT).filter(
+  (f) => !f.startsWith(".claude/") && !f.startsWith("docs/") && isCode(f) && existsSync(join(ROOT, f)),
+);
 if (!changed.length) process.exit(0);
 
 const failures: string[] = [];

@@ -540,6 +540,8 @@ This repository runs the Kataster workflow. Discovery lives in \`.claude/skills/
 - **ADRs:** new ones are \`proposed\`; only the user sets \`accepted\`. A \`done\` story is never reopened.
 - **Reviews:** \`/implement\` scales review to the diff. \`code-reviewer\` and \`acceptance-tester\` report findings and
   never create stories; fast-lane stories skip the formal review pass.
+- **Worker:** \`/implement --worker ST-NNN --base <branch>\` (agent \`story-worker\`) builds one given story and
+  returns a JSON report instead of asking; an open decision is \`blocked\`, never code. It starts no subagent.
 - **Gate:** \`node .claude/skills/implement/scripts/verify.ts\`.
 - **Metrics:** workflow skills mark their phases with \`story-metrics.ts mark\` (the \`metrics\` skill); never edit
   \`docs/stories/metrics/\`, commit it with the work.

@@ -64,7 +64,7 @@ is what to read when you are unsure where something belongs.
 | `ux-design` | how we decide the interface: the UX frontier, what a story says about a screen, review order |
 | `prototype` | throwaway HTML prototype for a UI or logic question; the verdict goes into the story and the guidelines |
 | `/groom-backlog` | periodic challenge of the open backlog |
-| `/implement [ST-NNN] [--fast]` | one story on its branch: domain = test-first, diff-scaled review, acceptance; chore/task or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first |
+| `/implement [ST-NNN] [--fast]` | one story on its branch: domain = test-first, diff-scaled review, acceptance; chore/task or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first; `--worker ST-NNN --base <branch>` = worker mode for an orchestrator |
 | `tdd` | red → green loop, good tests, seams |
 | `codebase-design` | vocabulary for deep modules |
 | `/improve-codebase-architecture` | periodic scan for deepening opportunities, then grilling |
@@ -185,6 +185,15 @@ lane: prepare → test plan → **characterization net for untested existing beh
 Fast lane (`chore`/`task`, or `--fast`): prepare → implement → lint/typecheck/tests → `verify.ts` → pull request.
 **The user only merges.** `--prototype` settles an open UI question first; if it changes the story, the story goes
 back to `review`, through the linter and the user again. Start the next story in a fresh session.
+
+Worker mode: `/implement --worker ST-NNN --base <branch>` (agent `story-worker`) is the same engineering for an
+orchestrator instead of the user. The worker takes the given story, cuts the story branch from the given base
+without pulling, runs context pack → test plan → characterization → red/green → `verify.ts` with the usual phase
+markers, and ends there. It starts no reviews and asks no questions: it returns a JSON report
+(`worker.ts report`: `ready-for-review`, `blocked` or `returned-to-review`, plus branch, commits, changed files,
+verify result, new terms, ADR proposals, open questions). `blocked` is a result of equal rank – an open domain or
+technical decision is reported, never decided in code. The orchestrator runs the reviews, writes the glossary and
+ADRs, and starts the worker again with the findings; the worker continues on the same branch and reports again.
 
 In a brownfield domain story, `characterize.ts` names the affected paths with no test. Characterization tests pin
 the current behaviour and are committed separately (`ST-NNN: characterize <area>`) **before** the story's red →

@@ -20,6 +20,14 @@
  *
  * The per-agent path guard is not wired here: it is expressed as `edit` permissions in
  * `.opencode/agents/*.md`, which is the native OpenCode equivalent.
+ *
+ * Child sessions (subagents, and the `story-worker` of `/implement --worker`) get the same tool hooks as a main
+ * session: protect-files, bash-guard, the metrics identity, validate-docs, code-check, project checks and the
+ * path-scoped rules all key on the calling session. They get no status block and no idle gate – exactly what Claude
+ * Code does, where SessionStart and Stop fire for the main session only. For a worker that is wanted: its gate is
+ * `verify.ts` (a superset of the quick gate, and `worker.ts report` refuses `ready-for-review` without a green run on
+ * the branch head), and a synthetic message after its last turn would start another round and hand the orchestrator
+ * a second report. That a worker starts no subagent is a permission of the agent (`subagent: deny`), not plugin logic.
  */
 import { Plugin } from "@opencode/plugin";
 import { spawn } from "node:child_process";
@@ -305,6 +313,7 @@ export default Plugin.define({
       sentBack.delete(event.sessionID);
     });
     await ctx.session.hook("experimental.idle", async (event) => {
+      // No gate for child sessions – see the header: a worker ends on verify.ts and one report.
       if (childSessions.has(event.sessionID)) return;
       if (sentBack.has(event.sessionID)) return;
       const res = await run("stop-gate.ts", { stop_hook_active: false, session_id: event.sessionID }, 600_000);

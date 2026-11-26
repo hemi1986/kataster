@@ -45,6 +45,12 @@ The workflow is spec-driven and mechanical, not a simulated organisation:
   test first, committed separately; a contradiction sends the story back to `review`.
 - **As-is vs target:** `docs/domain/context-map.md` is the target; `/adopt` writes only
   `docs/domain/context-map.as-is.md`; the gap register links both.
+- **Worker mode:** `/implement --worker ST-NNN --base <branch>` (agent `story-worker`) builds one given story up
+  to a green verify and returns a JSON report (`lib/worker.ts`, `implement/scripts/worker.ts`) instead of asking:
+  `ready-for-review`, `blocked` or `returned-to-review`. `blocked` is a result of equal rank – an open decision is
+  never made in code. The worker starts no subagent, pulls nothing and writes neither `CONTEXT.md` nor ADRs; reviews,
+  `done` and the pull request stay with the orchestrator. The cut is the same in both harnesses and enforced in the
+  agent files (`disallowedTools` / `subagent: deny`); the manual mode is untouched by it.
 - **Reviewers report, never plan:** `code-reviewer` and `acceptance-tester` create no stories. Findings are fixed in
   the story or handed back as open questions.
 - **Story metrics:** `/shape`, `/feature`, `/review-stories` and `/implement` mark phases with
