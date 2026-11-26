@@ -47,5 +47,9 @@ The workflow is spec-driven and mechanical, not a simulated organisation:
   `docs/domain/context-map.as-is.md`; the gap register links both.
 - **Reviewers report, never plan:** `code-reviewer` and `acceptance-tester` create no stories. Findings are fixed in
   the story or handed back as open questions.
+- **Story metrics:** `/shape`, `/feature`, `/review-stories` and `/implement` mark phases with
+  `.claude/skills/metrics/scripts/story-metrics.ts`. Usage comes from harness adapters (`lib/metrics-claude.ts`,
+  `lib/metrics-opencode.ts`) that return the same `Stream` shape; entries store raw tokens only, the report prices
+  them. A skill that marks a phase uses the phase names in `lib/metrics.ts` – one skill text serves both harnesses.
 - The installer prunes the retired workflow files named in `OBSOLETE` (only manifest-tracked, unmodified ones), so a
   removed agent disappears on upgrade without touching optional extras or user files.

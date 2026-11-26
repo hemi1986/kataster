@@ -27,6 +27,11 @@ deployment and the identity model – treat those as constraints, not as a blank
 
 ## 0. Intake and mode
 
+**Metrics.** Pick the initiative's kebab-case slug first and mark the whole run as one phase:
+`node .claude/skills/metrics/scripts/story-metrics.ts mark feature:<slug> shape start` now, `… shape end` after
+step 7 (also with `--dry-run`), each as its own command. When the first slice goes to `/feature` under the same slug,
+its stories share the shaping cost; under another slug it stays visible on the feature but undistributed.
+
 A reference (`ST-NNN`, `#123`, `PROJ-123`, URL) is resolved with the read-only intake:
 
 ```bash

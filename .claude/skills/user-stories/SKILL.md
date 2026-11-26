@@ -72,6 +72,7 @@ Template: `templates/story-template.md`. Schema: `schema/story.schema.json`.
 | `ui` (`true`) | no | story has a frontend part; triggers the on-demand UX utility |
 | `size`, `risk`, `depends_on` | no | optional planning hints; no sizing gate |
 | `labels` | no | lowercase, e.g. `mvp`, `feature:<slug>` |
+| `feature` | from `/feature` | the kebab-case slug of the feature that derived the story; the metrics report shares the feature's spec cost across its stories. Keep the `feature:<slug>` label beside it for trackers – the linter refuses a mismatch and more than one feature label, and warns about a label without the field |
 | `external` | with a tracker | backlog sync – never by hand |
 
 With `backlog.provider` = `github` or `jira`, `external` holds the tracker key (`external.key`) and URL. The sync writes

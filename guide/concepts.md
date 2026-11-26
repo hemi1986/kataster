@@ -127,6 +127,20 @@ Review effort follows the risk of the diff, not a fixed checklist:
 The **acceptance tester decides** whether a story is done, not the user. The user reviews the pull request and
 merges. That keeps one checkpoint with the user (merge) instead of two.
 
+## Story metrics
+
+Every workflow step is a marked phase: `story-metrics.ts mark <ST-NNN|feature:<slug>> <phase> start|end`. The
+marker is all the agent does – tokens come from where the harness keeps them (Claude Code transcripts, the OpenCode
+database), and the hooks add who set the marker, so subagents and parallel workers are told apart. Each pass is
+appended to `docs/stories/metrics/<target>.json`: tokens (input, output incl. reasoning, cache read/write), model,
+harness, agent time and the time spent waiting for the user. Anything outside a phase lands in an `unassigned` pot
+that the report shows.
+
+Spec work happens before story ids exist, so `/shape` and `/feature` mark the feature; the stories point back with
+`feature: <slug>`. The report splits the feature's cost by scenarios (or checklist items) and prices tokens with
+`metrics.prices` from the project profile. Nothing derived is stored, so the key and the prices can change later.
+Details: `.claude/skills/metrics/SKILL.md`.
+
 ## Why a local mirror
 
 One Markdown file per story, versioned with the code, validated by a hook, rendered into `BACKLOG.md`. The agent can

@@ -11,6 +11,10 @@ There is no simulated role play. The domain, architecture and testability decisi
 the event storming; the **spec linter** now checks mechanically that the story carries them. The user approves; the
 agent does not approve on their behalf.
 
+0. **Metrics**: mark the review with `node .claude/skills/metrics/scripts/story-metrics.ts mark <target> review-stories
+   start` and `… end` after the wrap-up (step 9), each as its own command. Target: `feature:<slug>` when every
+   selected story has the same `feature`, otherwise mark each story's own lint-and-fix round on its `ST-NNN` (one
+   story after the other; the joint approval round then counts as unassigned on the last one).
 1. **Selection**: Stories from the invocation arguments, or all with `status: review` in `docs/stories/`. With a
    tracker (`backlog.provider` ≠ `local`), pull first (`/backlog-sync pull`) so the review sees the tracker's state.
    None found → report and stop.
