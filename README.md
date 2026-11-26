@@ -110,7 +110,8 @@ docs/
   reviews/              story reviews and adoption reports
 ```
 
-Existing `AGENTS.md`, `.claude/settings.json` and `.opencode/opencode.jsonc` are **merged**, not overwritten.
+Existing `AGENTS.md`, `.claude/settings.json` and `.opencode/opencode.jsonc` are **merged**, not overwritten
+(`opencode.jsonc` in place: its comments and formatting stay).
 Existing `CONTEXT.md` and `docs/` are never touched.
 
 ## The commands
