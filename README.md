@@ -458,9 +458,10 @@ the end – and you merge.
 An unattended run waits at every permission prompt. The workflow scripts are allowed in both harnesses; `git`
 commits, merges and pushes, `gh pr create` and your test commands follow your own permission settings – allow them
 (or run the harness in its auto mode) before you leave a run alone. In Claude Code's `dontAsk` mode a command with a
-heredoc is refused, so the skills pass JSON to the scripts as files under `.kataster/details/`. In OpenCode, consider
-`"automations": false` in `.opencode/opencode.jsonc` for an unattended project as well; the guard blocks creating an
-automation during a run, the setting removes the tool altogether.
+heredoc is refused, so the skills pass JSON to the scripts as files under `.kataster/details/`. In OpenCode,
+`.opencode/opencode.jsonc` ships `"automations": false`: an automation runs later, outside the session's permissions –
+in a test run an agent used `automation.create` to get around its shell rules. Set it to `true` if the project wants
+automations; an upgrade keeps the value. During a run the guard blocks creating one either way.
 
 ## Story metrics
 

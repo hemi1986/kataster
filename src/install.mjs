@@ -355,6 +355,8 @@ export class Installer {
         ignore: mergeUnique(ours.watcher?.ignore ?? [], existing.watcher?.ignore ?? []),
       },
     };
+    // `automations: false` comes from ours unless the project set the key itself – an upgrade never turns them back on
+    // or off against the project's choice.
     // Permission rules: the project's own first, ours appended when missing. OpenCode applies the last matching rule,
     // so a project's catch-all `ask` does not prompt for the workflow scripts – like Claude Code's allow list. A
     // project that writes something other than a rule list keeps it untouched.

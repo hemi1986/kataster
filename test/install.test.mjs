@@ -129,10 +129,12 @@ test("OpenCode mirrors every Claude Code allow rule", () => {
   // The shipped template carries the same rules, so a fresh install and an upgrade end up alike.
   const template = parseJsonc(readFileSync(join(PKG, ".opencode", "opencode.jsonc"), "utf8"));
   assert.deepEqual(template.permissions, OPENCODE_ALLOW);
+  assert.equal(template.automations, false, "OpenCode automations are off by default");
 
   const dir = repo({ "package.json": "{}" });
   assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
   assert.deepEqual(parseJsonc(read(dir, ".opencode/opencode.jsonc")).permissions, OPENCODE_ALLOW);
+  assert.equal(parseJsonc(read(dir, ".opencode/opencode.jsonc")).automations, false);
   assert.deepEqual(json(dir, ".claude/settings.json").permissions.allow, ALLOW);
 });
 
@@ -154,7 +156,13 @@ test("merges the OpenCode rules into an existing config: the project's own first
   assert.equal(run(["init", old, "--yes", "--no-install"]).code, 0);
   const upgraded = parseJsonc(read(old, ".opencode/opencode.jsonc"));
   assert.deepEqual(upgraded.permissions, OPENCODE_ALLOW);
+  assert.equal(upgraded.automations, false, "an upgrade turns automations off where the project said nothing");
   assert.ok(upgraded.watcher.ignore.includes("tmp/**"));
+
+  // A project that wants automations keeps them.
+  const wants = repo({ "package.json": "{}", ".opencode/opencode.jsonc": JSON.stringify({ automations: true }) });
+  assert.equal(run(["init", wants, "--yes", "--no-install"]).code, 0);
+  assert.equal(parseJsonc(read(wants, ".opencode/opencode.jsonc")).automations, true);
 
   // Something other than a rule list is the project's business.
   const odd = repo({ "package.json": "{}", ".opencode/opencode.jsonc": JSON.stringify({ permissions: { shell: "ask" } }) });

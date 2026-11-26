@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **OpenCode automations off by default.** `.opencode/opencode.jsonc` ships `"automations": false`; init and upgrade
+  add it where the project did not set the key (a project's own value is kept). Why: in the marathon test run an
+  agent whose shell commands were denied searched the Code Mode tools for another way, and `automation.create` would
+  have run a shell command later – outside the session's permission rules and the Kataster hooks. `marathon-guard.ts`
+  still blocks creating one during a run for projects that turn them back on.
 - **Marathon: one session at a time, enforced.** A real run left two orchestrators and two workers on one checkout
   (OpenCode runs sessions in its background service, a closed TUI stops nothing). The run now has a lease
   (`.claude/state/marathon-lease.json`, `lib/lease.ts`): `start-run`/`resume` make the calling session the

@@ -13,6 +13,12 @@
   // git/gh commands Claude Code allows run without a prompt, even where a project puts `shell` behind `ask`. On
   // upgrade the installer appends missing rules after the project's own.
 
+  // Automations run a prompt, a Code Mode script or a shell command later, on a timer or an event – outside the
+  // session's permissions and after it ended. In a marathon test run an agent whose shell commands were denied went
+  // looking for another way and found `automation.create`. Off by default; a project that wants them sets `true`
+  // (an upgrade keeps a value the project set).
+  "automations": false,
+
   "permissions": [
     { "action": "shell", "resource": "node .claude/skills/event-storming/scripts/validate-events.ts", "effect": "allow" },
     { "action": "shell", "resource": "node .claude/skills/event-storming/scripts/render-event-storming.ts", "effect": "allow" },
