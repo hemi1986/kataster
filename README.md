@@ -130,7 +130,7 @@ Existing `CONTEXT.md` and `docs/` are never touched.
 | `/backlog-sync [status\|pull\|push]` | Keep `docs/stories/` in sync with GitHub Issues or Jira |
 | `/groom-backlog [scope]` | Periodic challenge: is this backlog still worth building? |
 | `/implement [ST-NNN] [--fast]` | One story on its branch: domain = test-first, diff-scaled review, acceptance; `chore`/`task` or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first; `--worker ST-NNN --base <branch>` is the worker mode an orchestrator starts |
-| `/marathon [resume]` | Unattended run: the main session orchestrates story after story – claim, `story-worker`, reviews, merge into `marathon/<date>`, verify – and ends with one pull request; `--max-stories`, `--max-failures`, `--no-gate-foundation`, `--budget-tokens`, `--budget-usd` |
+| `/marathon [resume]` | **Experimental.** Unattended run: the main session orchestrates story after story – claim, `story-worker`, reviews, merge into `marathon/<date>`, verify – and ends with one pull request; `--max-stories`, `--max-failures`, `--no-gate-foundation`, `--budget-tokens`, `--budget-usd` |
 | `/improve-codebase-architecture` | Scan for deepening opportunities, present them, grill one |
 | `/retro` | Retrospective on a session, proposing rule changes |
 
@@ -402,7 +402,13 @@ For Jira, `jira-plan.ts` prints the exact MCP calls, `jira-record.ts` writes the
   orchestrator reviews and sends findings back to the same branch. The cut is identical in Claude Code and OpenCode
   and enforced by the agent (no subagent tool, no questions).
 
-## Marathon runs
+## Marathon runs (experimental)
+
+> **Experimental.**
+> - **Serial only:** one worker at a time (`--n` 1).
+> - **The merge-blocker rules have not been through a real run yet** – only the test suite has exercised them.
+> - **An unattended run needs narrowly scoped permissions** –
+>   see [Permissions for an unattended run](#permissions-for-an-unattended-run) before you leave one alone.
 
 `/marathon` turns the main session into the **orchestrator** of an unattended run. It builds nothing itself: story
 after story it takes the next planned story, hands it to a `story-worker`, reads the worker's report, runs the
@@ -456,13 +462,33 @@ the end – and you merge.
   OpenCode: `subagent` tool with `agent: story-worker`; the call returns a `sessionID` and the report arrives as a
   background result; the same tool with that `sessionID` continues the worker.
 
-An unattended run waits at every permission prompt. The workflow scripts are allowed in both harnesses; `git`
-commits, merges and pushes, `gh pr create` and your test commands follow your own permission settings – allow them
-(or run the harness in its auto mode) before you leave a run alone. In Claude Code's `dontAsk` mode a command with a
-heredoc is refused, so the skills pass JSON to the scripts as files under `.kataster/details/`. In OpenCode,
-`.opencode/opencode.jsonc` ships `"automations": false`: an automation runs later, outside the session's permissions –
-in a test run an agent used `automation.create` to get around its shell rules. Set it to `true` if the project wants
-automations; an upgrade keeps the value. During a run the guard blocks creating one either way.
+### Permissions for an unattended run
+
+An unattended run waits at every permission prompt, and nobody is there to judge one. Allow what the run needs, and
+nothing more. The workflow scripts are allowed in both harnesses already; the rest is yours to add:
+
+| Allow | Deny |
+|---|---|
+| `git add`, `git commit`, `git merge`, `git switch`, listing branches | `git push` to the default branch, with `--force`, `--delete` or `--mirror` |
+| `git push origin marathon/*` and `git push -u origin marathon/*` – no other push | `git reset --hard`, `git clean`, `git branch -d/-D`, `git switch --force` |
+| `gh pr create` | `rm -r`, `rm -rf` |
+| your test, lint, type-check and verify commands, each by name | installing packages (`npm install`, `npx -y`) |
+| editing files inside the project | asking the user (nobody is there) |
+
+In Claude Code these are `Bash(…)` entries in `permissions.allow` and `permissions.deny` of
+`.claude/settings.json`, plus `Edit(/**)` and `Write(/**)` to allow and `AskUserQuestion` to deny; run it with `--permission-mode dontAsk`, which refuses what is not allowed instead of
+waiting. It applies `allow` rules only once the folder is trusted. In OpenCode they are `shell` rules in
+`.opencode/opencode.jsonc`, plus a `question` deny: put a `shell *` deny first, your allow rules after it and the denies last – the last
+matching rule wins. Do not use a blanket auto mode (`--auto`, bypassing permissions) for an unattended run. A `*` in
+a rule matches any text, spaces included, so keep the denies even with narrow allows. Rules like these and the
+Kataster hooks are guard rails, not a sandbox: whatever your allowed commands run (a package script, a test) runs
+with your rights, so use a repository and credentials you can afford to have touched.
+
+In Claude Code's `dontAsk` mode a command with a heredoc is refused, so the skills pass JSON to the scripts as files
+under `.kataster/details/`. In OpenCode, `.opencode/opencode.jsonc` ships `"automations": false`: an automation runs
+later, outside the session's permissions – in a test run an agent used `automation.create` to get around its shell
+rules. Set it to `true` if the project wants automations; an upgrade keeps the value. During a run the guard blocks
+creating one either way.
 
 ## Story metrics
 
