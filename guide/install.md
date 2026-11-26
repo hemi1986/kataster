@@ -23,7 +23,8 @@ The installer:
 
 - copies `.claude/`, `.opencode/`, `AGENTS.md` and the `docs/` skeleton,
 - **merges** into an existing `AGENTS.md` (marker block), `.claude/settings.json` (hooks and permissions) and
-  `.opencode/opencode.jsonc` (watcher ignore list),
+  `.opencode/opencode.jsonc` (watcher ignore list, and the `shell` permission rules that mirror Claude Code's allow
+  list – the project's own rules stay first),
 - detects stack, package manager, code roots and commands into `.claude/project.json`,
 - records the backlog backend in `.claude/project.json` (`local`, `github` or `jira`),
 - adds `.claude/node_modules/`, `.claude/state/` and `.kataster/` to `.gitignore`,

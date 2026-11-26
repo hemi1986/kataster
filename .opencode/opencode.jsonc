@@ -8,6 +8,27 @@
   // commands, generated files, accepted ADRs) are enforced by
   // .opencode/plugins/kataster/index.ts, which runs the .claude/hooks/*.ts scripts.
   // Per-agent write scopes are expressed as `edit` permissions in .opencode/agents/*.md.
+  //
+  // `permissions` mirrors Claude Code's `permissions.allow` (ALLOW in the installer): the workflow scripts and the
+  // git/gh commands Claude Code allows run without a prompt, even where a project puts `shell` behind `ask`. On
+  // upgrade the installer appends missing rules after the project's own.
+
+  "permissions": [
+    { "action": "shell", "resource": "node .claude/skills/event-storming/scripts/validate-events.ts", "effect": "allow" },
+    { "action": "shell", "resource": "node .claude/skills/event-storming/scripts/render-event-storming.ts", "effect": "allow" },
+    { "action": "shell", "resource": "node .claude/skills/user-stories/scripts/*", "effect": "allow" },
+    { "action": "shell", "resource": "node .claude/skills/research/scripts/*", "effect": "allow" },
+    { "action": "shell", "resource": "node .claude/skills/adopt/scripts/*", "effect": "allow" },
+    { "action": "shell", "resource": "node .claude/skills/backlog/scripts/*", "effect": "allow" },
+    { "action": "shell", "resource": "node .claude/skills/implement/scripts/*", "effect": "allow" },
+    { "action": "shell", "resource": "node .claude/skills/metrics/scripts/*", "effect": "allow" },
+    { "action": "shell", "resource": "node .claude/skills/marathon/scripts/*", "effect": "allow" },
+    { "action": "shell", "resource": "gh issue *", "effect": "allow" },
+    { "action": "shell", "resource": "gh label *", "effect": "allow" },
+    { "action": "shell", "resource": "git status *", "effect": "allow" },
+    { "action": "shell", "resource": "git diff *", "effect": "allow" },
+    { "action": "shell", "resource": "git log *", "effect": "allow" }
+  ],
 
   "watcher": {
     "ignore": ["**/node_modules/**", "**/.next/**", "**/dist/**", "**/coverage/**"]

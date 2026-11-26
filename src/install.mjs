@@ -77,12 +77,26 @@ const ALLOW = [
   "Bash(node .claude/skills/backlog/scripts/*)",
   "Bash(node .claude/skills/implement/scripts/*)",
   "Bash(node .claude/skills/metrics/scripts/*)",
+  "Bash(node .claude/skills/marathon/scripts/*)",
   "Bash(gh issue *)",
   "Bash(gh label *)",
   "Bash(git status *)",
   "Bash(git diff *)",
   "Bash(git log *)",
 ];
+
+/**
+ * OpenCode's counterpart of one `ALLOW` entry: `Bash(<pattern>)` becomes a `shell` rule with the same pattern. Both
+ * harnesses treat a trailing ` *` as optional arguments, so the patterns carry over unchanged. Null for an entry
+ * without an OpenCode equivalent – the install test refuses one, so a new kind of entry needs a decision here.
+ */
+export function opencodeRule(entry) {
+  const m = /^Bash\((.+)\)$/.exec(entry);
+  return m ? { action: "shell", resource: m[1], effect: "allow" } : null;
+}
+
+/** `ALLOW` for OpenCode – `.opencode/opencode.jsonc` ships exactly these rules (checked by the install test). */
+const OPENCODE_ALLOW = ALLOW.map(opencodeRule).filter(Boolean);
 
 /**
  * Files earlier versions shipped and 0.4 removed. `upgrade` deletes them from an existing installation – but only
@@ -333,6 +347,14 @@ export class Installer {
         ignore: mergeUnique(ours.watcher?.ignore ?? [], existing.watcher?.ignore ?? []),
       },
     };
+    // Permission rules: the project's own first, ours appended when missing. OpenCode applies the last matching rule,
+    // so a project's catch-all `ask` does not prompt for the workflow scripts – like Claude Code's allow list. A
+    // project that writes something other than a rule list keeps it untouched.
+    if (existing.permissions === undefined || Array.isArray(existing.permissions)) {
+      const key = (rule) => [rule?.action, rule?.resource, rule?.effect].join("\0");
+      const have = new Set((existing.permissions ?? []).map(key));
+      merged.permissions = [...(existing.permissions ?? []), ...OPENCODE_ALLOW.filter((rule) => !have.has(key(rule)))];
+    }
     this.put(path, `${JSON.stringify(merged, null, 2)}\n`, { merge: true });
   }
 
@@ -537,4 +559,4 @@ export function createInstaller(root, options) {
   return new Installer(root, options);
 }
 
-export { PKG, AGENTS_BEGIN, AGENTS_END };
+export { PKG, AGENTS_BEGIN, AGENTS_END, ALLOW, OPENCODE_ALLOW };
