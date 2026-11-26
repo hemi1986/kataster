@@ -12,7 +12,7 @@
  */
 import * as d from "./discovery.ts";
 import * as e from "./engineering.ts";
-import type { Entry, PriceTable, Tokens } from "./metrics.ts";
+import type { Entry, PriceTable, ReviewRecord, Tokens } from "./metrics.ts";
 import { addTokens, costOf, featureSlug, isStoryTarget, loadPrices, metricsFiles, PHASES, priceFor, readMetricsFile, totalTokens, UNASSIGNED, zeroTokens } from "./metrics.ts";
 
 export interface Sum {
@@ -116,11 +116,15 @@ export interface ReportData {
     spec: Sum;
     total: Sum;
     phases: { phase: string; sum: Sum; models: string[] }[];
+    /** Reviews recorded for the story (`story-metrics.ts review`), oldest first. */
+    reviews: ReviewRecord[];
   }[];
   features: (Distribution & { phases: { phase: string; sum: Sum; models: string[] }[] })[];
   /** Entries no story or feature could be found for (`unassigned.json`). */
   orphan: Sum;
   sizes: { size: string; stories: number; meanCost: number | null; medianCost: number | null; meanTokens: number; meanAgentMs: number }[];
+  /** Models that have no price in `metrics.prices` – their cost is unknown. */
+  unpriced: string[];
   warnings: string[];
 }
 
@@ -143,7 +147,17 @@ function byPhase(entries: Entry[], prices: PriceTable, unpriced: Set<string>): {
     }));
 }
 
-export function buildReport(opts: { story?: string; feature?: string; since?: string }): ReportData {
+/** What a report covers. `extra` adds entries that are not in this checkout (a story branch that is not merged). */
+export interface ReportOptions {
+  story?: string;
+  feature?: string;
+  /** Only these stories (and the features they belong to). */
+  stories?: string[];
+  since?: string;
+  extra?: { entries: Entry[]; reviews: { target: string; review: ReviewRecord }[] };
+}
+
+export function buildReport(opts: ReportOptions): ReportData {
   const warnings: string[] = [];
   const { prices, errors } = loadPrices();
   warnings.push(...errors);
@@ -151,16 +165,30 @@ export function buildReport(opts: { story?: string; feature?: string; since?: st
   if (opts.since && (since === null || Number.isNaN(since))) throw new Error(`--since '${opts.since}' is not a date (YYYY-MM-DD)`);
 
   const byTarget = new Map<string, Entry[]>();
+  const reviewsOf = new Map<string, ReviewRecord[]>();
+  const seen = new Set<string>();
   let unclosed = 0;
+  const add = (x: Entry): void => {
+    // An entry of an unmerged branch may be in this checkout as well once the branch is merged: count it once.
+    const id = `${x.target}\0${x.key}`;
+    if (seen.has(id) || (since !== null && Date.parse(x.start) < since)) return;
+    seen.add(id);
+    if (x.unclosed) unclosed += 1;
+    byTarget.set(x.target, [...(byTarget.get(x.target) ?? []), x]);
+  };
+  const addReview = (target: string, r: ReviewRecord): void => {
+    if (since !== null && Date.parse(r.at) < since) return;
+    const list = reviewsOf.get(target) ?? [];
+    if (!list.some((x) => x.key === r.key)) reviewsOf.set(target, [...list, r]);
+  };
   for (const path of metricsFiles()) {
     const file = readMetricsFile(path);
     if (!file) continue;
-    for (const x of file.entries) {
-      if (since !== null && Date.parse(x.start) < since) continue;
-      if (x.unclosed) unclosed += 1;
-      byTarget.set(x.target, [...(byTarget.get(x.target) ?? []), x]);
-    }
+    file.entries.forEach(add);
+    for (const r of file.reviews ?? []) addReview(file.target, r);
   }
+  opts.extra?.entries.forEach(add);
+  for (const { target, review } of opts.extra?.reviews ?? []) addReview(target, review);
   const stories = storyInfos();
   const unpriced = new Set<string>();
 
@@ -179,14 +207,15 @@ export function buildReport(opts: { story?: string; feature?: string; since?: st
     return s;
   };
 
-  const ids = new Set<string>([...byTarget.keys()].filter(isStoryTarget));
+  const ids = new Set<string>([...byTarget.keys(), ...reviewsOf.keys()].filter(isStoryTarget));
   for (const f of features) for (const s of f.shares) ids.add(s.story);
   const storyRows: ReportData["stories"] = [...ids].sort().map((id) => {
     const list = byTarget.get(id) ?? [];
     const own = sumEntries(list.filter((x) => x.phase !== UNASSIGNED), prices, unpriced);
     const unassigned = sumEntries(list.filter((x) => x.phase === UNASSIGNED), prices, unpriced);
     const spec = specOf(id);
-    return { id, info: stories.get(id) ?? null, own, unassigned, spec, total: addSum(addSum(own, unassigned), spec), phases: byPhase(list, prices, unpriced) };
+    const reviews = [...(reviewsOf.get(id) ?? [])].sort((a, b) => a.at.localeCompare(b.at));
+    return { id, info: stories.get(id) ?? null, own, unassigned, spec, total: addSum(addSum(own, unassigned), spec), phases: byPhase(list, prices, unpriced), reviews };
   });
 
   const orphan = sumEntries(byTarget.get(UNASSIGNED) ?? [], prices, unpriced);
@@ -214,11 +243,16 @@ export function buildReport(opts: { story?: string; feature?: string; since?: st
   let storyOut = storyRows;
   let featureOut = features;
   if (opts.story) storyOut = storyRows.filter((r) => r.id === opts.story);
+  if (opts.stories) {
+    const wanted = new Set(opts.stories);
+    storyOut = storyRows.filter((r) => wanted.has(r.id));
+    featureOut = features.filter((f) => f.shares.some((x) => wanted.has(x.story)));
+  }
   if (opts.feature) {
     featureOut = features.filter((f) => f.feature === opts.feature);
     storyOut = storyRows.filter((r) => r.info?.feature === opts.feature);
   }
-  return { since: opts.since ?? null, stories: storyOut, features: featureOut, orphan, sizes, warnings };
+  return { since: opts.since ?? null, stories: storyOut, features: featureOut, orphan, sizes, unpriced: [...unpriced].sort(), warnings };
 }
 
 // --------------------------------------------------------------------------
@@ -254,6 +288,28 @@ function phaseTable(phases: { phase: string; sum: Sum; models: string[] }[], ext
   return table(["Phase", "Passes", "Models", "Input", "Output", "Cache read", "Cache write", "Cost", "Agent", "Wait"], rows, new Set([1, 3, 4, 5, 6, 7, 8, 9]));
 }
 
+/** The overview table: one row per story with its cost, tokens and times. */
+export function storiesTable(rows: ReportData["stories"]): string {
+  return table(
+    ["Story", "Size", "Status", "Own", "Unassigned", "Spec share", "Total", "Tokens", "Agent", "Wait"],
+    rows.map((s) => [
+      s.id, s.info?.size ?? "–", s.info?.status ?? "?", usd(s.own.costUsd), usd(s.unassigned.costUsd), usd(s.spec.costUsd), usd(s.total.costUsd),
+      n(totalTokens(s.total.tokens)), duration(s.total.agentMs), duration(s.total.userWaitMs),
+    ]),
+    new Set([3, 4, 5, 6, 7, 8, 9]),
+  );
+}
+
+/** Reviews with their verdict and findings per severity; `story` adds the story column. */
+export function reviewsTable(rows: { story?: string; review: Pick<ReviewRecord, "agent" | "verdict" | "blocker" | "major" | "minor" | "question" | "at"> }[]): string {
+  const withStory = rows.some((r) => r.story);
+  return table(
+    [...(withStory ? ["Story"] : []), "Reviewer", "Verdict", "Blocker", "Major", "Minor", "Question", "Date"],
+    rows.map(({ story, review: v }) => [...(withStory ? [story ?? ""] : []), v.agent, v.verdict.replaceAll("-", " "), String(v.blocker), String(v.major), String(v.minor), String(v.question), v.at.slice(0, 10)]),
+    new Set(withStory ? [3, 4, 5, 6] : [2, 3, 4, 5]),
+  );
+}
+
 export function renderReport(r: ReportData, opts: { story?: string; feature?: string }): string {
   const out: string[] = [];
   const title = opts.story ? `Metrics – ${opts.story}` : opts.feature ? `Metrics – feature:${opts.feature}` : "Metrics";
@@ -272,21 +328,11 @@ export function renderReport(r: ReportData, opts: { story?: string; feature?: st
       if (feat && share) extra.push({ label: `spec share (feature:${feat.feature}, ${feat.key}, ${(share.fraction * 100).toFixed(0)}%)`, sum: s.spec });
       extra.push({ label: "total", sum: s.total });
       out.push(phaseTable(own, extra), "");
+      if (s.reviews.length) out.push("## Reviews", "", reviewsTable(s.reviews.map((review) => ({ review }))), "");
     }
   } else {
     if (r.stories.length) {
-      out.push("## Stories", "");
-      out.push(
-        table(
-          ["Story", "Size", "Status", "Own", "Unassigned", "Spec share", "Total", "Tokens", "Agent", "Wait"],
-          r.stories.map((s) => [
-            s.id, s.info?.size ?? "–", s.info?.status ?? "?", usd(s.own.costUsd), usd(s.unassigned.costUsd), usd(s.spec.costUsd), usd(s.total.costUsd),
-            n(totalTokens(s.total.tokens)), duration(s.total.agentMs), duration(s.total.userWaitMs),
-          ]),
-          new Set([3, 4, 5, 6, 7, 8, 9]),
-        ),
-        "",
-      );
+      out.push("## Stories", "", storiesTable(r.stories), "");
     }
     if (r.features.length) {
       out.push("## Features (spec cost)", "");

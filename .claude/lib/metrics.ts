@@ -45,6 +45,7 @@ export const PHASES = [
   "implementierung",
   "verify",
   "fixes",
+  "integration",
   "merge",
 ] as const;
 const REVIEW_PHASE_RE = /^review-[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -301,10 +302,30 @@ export interface Entry {
   recorded: string;
 }
 
+/** Verdicts a reviewer can end on – the acceptance tester's three and the code reviewer's two. */
+export const REVIEW_VERDICTS = ["accepted", "accepted-with-remarks", "not-accepted", "ready-to-merge", "fix-blockers-first"] as const;
+export type ReviewVerdict = (typeof REVIEW_VERDICTS)[number];
+export const SEVERITIES = ["blocker", "major", "minor", "question"] as const;
+
+/** One review of a story: who reviewed, the verdict and the findings per severity. Recorded by whoever started the reviewer. */
+export interface ReviewRecord {
+  /** Unique within the file: `<agent>|<at>`. */
+  key: string;
+  agent: string;
+  verdict: ReviewVerdict;
+  blocker: number;
+  major: number;
+  minor: number;
+  question: number;
+  at: string;
+}
+
 export interface MetricsFile {
   version: 1;
   target: string;
   entries: Entry[];
+  /** Reviews of the story, oldest first. Missing in files written before reviews were recorded. */
+  reviews?: ReviewRecord[];
 }
 
 export function readMetricsFile(path: string): MetricsFile | null {
@@ -316,8 +337,16 @@ export function readMetricsFile(path: string): MetricsFile | null {
 
 /** One entry per line, so a diff shows appended entries as appended lines. */
 function renderMetricsFile(file: MetricsFile): string {
-  const lines = file.entries.map((e) => JSON.stringify(e));
-  return `{"version":1,"target":${JSON.stringify(file.target)},"entries":[\n${lines.join(",\n")}\n]}\n`;
+  const lines = (list: unknown[]): string => (list.length ? `\n${list.map((x) => JSON.stringify(x)).join(",\n")}\n` : "");
+  const reviews = file.reviews?.length ? `,"reviews":[${lines(file.reviews)}]` : "";
+  return `{"version":1,"target":${JSON.stringify(file.target)},"entries":[${lines(file.entries)}]${reviews}}\n`;
+}
+
+function writeMetricsFile(path: string, file: MetricsFile): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, renderMetricsFile(file), "utf8");
+  renameSync(tmp, path);
 }
 
 /** Appends entries whose key is not in the file yet. Returns the number written. */
@@ -330,11 +359,21 @@ export function appendEntries(root: string, target: string, entries: Entry[]): n
     const fresh = entries.filter((e) => !known.has(e.key));
     if (!fresh.length) return 0;
     file.entries.push(...fresh);
-    mkdirSync(dirname(path), { recursive: true });
-    const tmp = `${path}.${process.pid}.tmp`;
-    writeFileSync(tmp, renderMetricsFile(file), "utf8");
-    renameSync(tmp, path);
+    writeMetricsFile(path, file);
     return fresh.length;
+  });
+}
+
+/** Appends a review to a story's metrics file. Returns false when the same review (agent and time) is there already. */
+export function appendReview(root: string, target: string, review: Omit<ReviewRecord, "key">): boolean {
+  const path = targetFile(root, target);
+  const record: ReviewRecord = { key: `${review.agent}|${review.at}`, ...review };
+  return withLock(path, () => {
+    const file = readMetricsFile(path) ?? { version: 1 as const, target, entries: [] };
+    if (file.reviews?.some((r) => r.key === record.key)) return false;
+    file.reviews = [...(file.reviews ?? []), record];
+    writeMetricsFile(path, file);
+    return true;
   });
 }
 

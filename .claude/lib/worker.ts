@@ -56,6 +56,11 @@ export interface WorkerFacts {
   reviews: string[];
   /** The tracker the story must be linked to and is not; null when there is nothing to complain about. */
   unlinked: string | null;
+  /**
+   * What would stop `story-status.ts ST-NNN done` in this checkout: a scenario without its test, an unticked
+   * checklist item. The orchestrator sets `done` after the merge – it must not find out there.
+   */
+  doneBlockers: string[];
 }
 
 const git = (...args: string[]): string | null => gitRaw(d.ROOT, args)?.trim() ?? null;
@@ -105,6 +110,18 @@ function verifyFacts(branch: string | null, head: string | null, uncommitted: st
   return { status: !current ? "stale" : v.ok ? "green" : "red", at: v.at ?? null, commit: v.commit ?? null, failed };
 }
 
+/** What keeps the story in the checkout from `done`. Empty while it is not `in-progress` there, or cannot be parsed. */
+function doneBlockers(story: string, onBranch: boolean): string[] {
+  if (!onBranch) return [];
+  try {
+    const stories = e.storiesById();
+    const s = stories.get(story);
+    return s && s.meta.status === "in-progress" ? e.transitionErrors(s, "in-progress", "done", stories) : [];
+  } catch {
+    return []; // an unreadable backlog is verify.ts's to report
+  }
+}
+
 /** Everything about a worker pass that can be read instead of remembered. */
 export function workerFacts(id: string, base: string): WorkerFacts {
   const story = id.toUpperCase();
@@ -150,6 +167,7 @@ export function workerFacts(id: string, base: string): WorkerFacts {
     verify: onBranch ? verifyFacts(branch, head, uncommitted) : { status: "not-run", at: null, commit: null, failed: [] },
     reviews,
     unlinked: located && provider !== "local" && !hasExternalKey(located.text) ? provider : null,
+    doneBlockers: doneBlockers(story, onBranch),
   };
 }
 
@@ -287,6 +305,7 @@ export function reportErrors(f: WorkerFacts, result: WorkerResult, details: Work
     }[f.verify.status];
     errs.push(`${why}. A pass without a green verify is 'blocked'`);
   }
+  for (const b of f.doneBlockers) errs.push(`the story could not be set 'done' after the merge: ${b}`);
   if (details.openQuestions.length) errs.push("an open question is a decision nobody made yet – the result is 'blocked', not 'ready-for-review'");
   const open = details.findings.filter((x) => x.action === "open");
   if (open.length) errs.push(`${open.length} finding(s) are still open – the result is 'blocked', not 'ready-for-review'`);

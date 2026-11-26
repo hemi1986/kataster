@@ -14,7 +14,7 @@ const cli = resolve(root, "bin", "kataster.mjs");
 const yamlSource = resolve(root, ".claude", "node_modules", "yaml");
 
 const STORY = "docs/stories/ST-012-place-order.md";
-const story = (status) =>
+const story = (status, ticked = false) =>
   [
     "---",
     "id: ST-012",
@@ -29,7 +29,7 @@ const story = (status) =>
     "",
     "## Acceptance Criteria",
     "",
-    "- [ ] The helper is extracted",
+    `- [${ticked ? "x" : " "}] The helper is extracted`,
     "",
   ].join("\n");
 
@@ -98,6 +98,7 @@ function implemented(dir) {
   write(dir, STORY, story("in-progress"));
   git(dir, "commit", "-q", "-am", "ST-012: start");
   write(dir, "src/order.ts", "export const order = 2;\n");
+  write(dir, STORY, story("in-progress", true));
   git(dir, "commit", "-q", "-am", "ST-012: extract the helper");
 }
 
@@ -202,6 +203,19 @@ test("report: ready-for-review carries the facts from git and needs a green veri
   assert.deepEqual(data.openQuestions, []);
 });
 
+test("report: ready-for-review needs a story the orchestrator can set done after the merge", () => {
+  const dir = repo();
+  implemented(dir);
+  // The last checklist item is still open: `story-status.ts done` would refuse on the integration branch.
+  write(dir, STORY, story("in-progress"));
+  git(dir, "commit", "-q", "-am", "ST-012: untick");
+  verified(dir);
+  const r = report(dir, "ready-for-review", { reason: "done" });
+  assert.equal(r.code, 1);
+  assert.match(r.out, /could not be set 'done' after the merge: 1 unticked acceptance criteria: "The helper is extracted"/);
+  assert.equal(report(dir, "blocked", { reason: "one item cannot be met" }).code, 0);
+});
+
 test("report: a verify run goes stale with the next code change, not with a metrics commit", () => {
   const dir = repo();
   implemented(dir);
@@ -304,7 +318,7 @@ test("planStart and reportErrors decide from the facts alone", () => {
   const facts = {
     story: "ST-012", title: "T", type: "domain", storyStatus: "ready", baseStatus: "ready", base: "main", baseCommit: "abc1234",
     branch: "st-012-x", branchExists: false, current: "main", head: null, commits: [], changedFiles: [], uncommitted: [],
-    verify: { status: "not-run", at: null, commit: null, failed: [] }, reviews: [], unlinked: null,
+    verify: { status: "not-run", at: null, commit: null, failed: [] }, reviews: [], unlinked: null, doneBlockers: [],
   };
   assert.deepEqual(planStart(facts), { pass: "first", problems: [], switch: ["switch", "-c", "st-012-x", "main"] });
   assert.deepEqual(planStart({ ...facts, branchExists: true }).switch, ["switch", "st-012-x"]);

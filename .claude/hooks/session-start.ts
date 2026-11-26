@@ -171,7 +171,7 @@ try {
 
 try {
   const { rel, storyId, loadStories } = await import("../lib/discovery.ts");
-  const { git, nextStory, readVerifyState } = await import("../lib/engineering.ts");
+  const { git, nextStory, readMarathonState, readVerifyState } = await import("../lib/engineering.ts");
 
   lines.push(`${name} – engineering status:`);
   const branch = git("rev-parse", "--abbrev-ref", "HEAD");
@@ -197,6 +197,19 @@ try {
   if (next) lines.push(`- Next ready story: ${storyId(next)} – ${next.meta.title} (start with /implement)`);
   if (!inProgress.length && !next && !existsSync(join(root, "docs", "stories")))
     lines.push("- No backlog yet – discovery comes first (/bootstrap or /adopt).");
+
+  // An unfinished marathon run owns its claims and switches the quick gate off while one is open – say so.
+  try {
+    const run = readMarathonState();
+    if (run?.status === "running") {
+      const held = Object.keys(run.claims);
+      lines.push(`- Marathon run ${run.run} (${run.integrationBranch}) is not finished${held.length ? ` – ${held.join(", ")} claimed` : ""}: /marathon resume goes on with it.`);
+    } else if (run && !run.stop?.pr) {
+      lines.push(`- Marathon run ${run.run} ended without a pull request (${run.stop?.reason ?? "no reason recorded"}): /marathon resume opens it.`);
+    }
+  } catch (err) {
+    lines.push(`- Marathon state is broken: ${(err instanceof Error ? err.message : String(err)).split("\n")[0]}`);
+  }
 
   const v = readVerifyState();
   if (v) {

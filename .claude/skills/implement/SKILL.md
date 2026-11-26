@@ -42,7 +42,7 @@ Read it instead of assuming `main`, `npm` or GitHub.
 each marker as its own command (the `metrics` skill explains it; the hooks add who you are). Phases: `kontext`
 (1.3–1.4), `testplan` (2),
 `characterization` (2a), `implementierung` (3), `verify` (4), `review-<agent>` per reviewer (5), `fixes` (6),
-`merge` (7, from the pull request to the user's merge). A skipped step gets no marker; both lanes mark the steps they
+`merge` (7, from the pull request to the user's merge). A marathon orchestrator marks `integration` instead of `merge`. A skipped step gets no marker; both lanes mark the steps they
 run. Commit `docs/stories/metrics/` with the step's commit – never edit those files.
 
 ## 1. Prepare
@@ -201,7 +201,8 @@ changed; no input handling (no request handler, form action); no migration; no n
 
 Mark `review-<agent> start` right before you start each reviewer (`review-code-reviewer`,
 `review-acceptance-tester`; started together, both run at once) and `review-<agent> end` once its review file is
-there. A second round is a second pass.
+there. A second round is a second pass. Then record each review – verdict and findings per severity – with
+`node .claude/skills/metrics/scripts/story-metrics.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n>`.
 
 Both reviewers report findings and never create stories. A finding is **fixed in this story** or becomes an open
 question to the developer (step 6) – there is no follow-up ticket.
@@ -305,7 +306,8 @@ OpenCode:
 
 | | Worker (this session) | Orchestrator |
 |---|---|---|
-| Story, base | given by the arguments; the base is used as it is in the checkout | picks the story, owns the base, pulls, syncs the tracker |
+| Story, base | given by the arguments; the base is used as it is in the checkout | picks the story, owns the base, pulls |
+| Tracker | untouched: every `story-status.ts` call carries `--no-tracker` | syncs it – `done` after the merge, the push at the end |
 | Steps | 1.3–1.5, 2, 2a, 3, 4 – on a continuation also 6 | 5 (reviews), 7 (`done`, push, pull request, merge), 8 |
 | Questions | become the report | talks to the user |
 | `CONTEXT.md`, `docs/adr/`, `docs/reviews/` | reads; proposes in the report | writes |
@@ -327,8 +329,8 @@ on the story branch. The story is the given one and the base is taken as it is �
 `git fetch` and `/backlog-sync pull` are the orchestrator's.
 
 - `STOP` → nothing was switched: report `blocked` with those lines as the reason (W3).
-- `PASS first` → the branch is new, cut from the base. Go on with step 1.3, then 1.4 without its `git switch`, 1.5,
-  2, 2a, 3 and 4.
+- `PASS first` → the branch is new, cut from the base. Go on with step 1.3, then 1.4 without its `git switch`
+  (`story-status.ts ST-NNN in-progress --no-tracker`), 1.5, 2, 2a, 3 and 4.
 - `PASS continuation` → the branch exists: review findings came back, a decision you were blocked on was made, or an
   earlier pass was cut off. **The branch is the memory**, not this session: run step 1.3 again (`kontext start`,
   the context pack, `kontext end`), read `git log <base>..HEAD`, the files listed under `REVIEWS` and whatever the
@@ -354,9 +356,9 @@ Wherever a step says *stop*, *ask* or *tell the user*, the pass ends with a repo
 
 | What happened | Result |
 |---|---|
-| *When the story is wrong* applies: a contradiction with another story, a rule or an ADR; a scenario that cannot be tested as written; a decision the story leaves open; an `unresolved` aggregate; a characterization test that contradicts the story; a chore that turns out to be domain behaviour | Do steps 1–2 of that section on the branch (`[OPEN]`, the `OPEN_QUESTIONS.md` row, `story-status.ts ST-NNN review`), commit `ST-NNN: back to review` → `returned-to-review` |
+| *When the story is wrong* applies: a contradiction with another story, a rule or an ADR; a scenario that cannot be tested as written; a decision the story leaves open; an `unresolved` aggregate; a characterization test that contradicts the story; a chore that turns out to be domain behaviour | Do steps 1–2 of that section on the branch (`[OPEN]`, the `OPEN_QUESTIONS.md` row, `story-status.ts ST-NNN review --no-tracker`), commit `ST-NNN: back to review` → `returned-to-review` |
 | The story is fine, but something it does not own is missing: a seam that is not in the catalog, a decision no ADR or convention covers, a term you would have to invent, a test runner, a spike's timebox, a tool or environment that fails, a verify that stays red after honest attempts, an `open` finding | `blocked` |
-| Every scenario (domain) or checklist item (fast lane) is built and step 4 is green | `ready-for-review` |
+| Every scenario (domain) is built and every checklist item of the story is ticked (`- [x]`, the last one too – the orchestrator only sets `done`), and step 4 is green | `ready-for-review` |
 
 **`blocked` is a result of equal rank.** An open domain or technical decision is never made in code: when you catch
 yourself choosing between options that the story, `events.yaml`, `CONTEXT.md`, the ADRs and the conventions do not
@@ -389,7 +391,8 @@ JSON
 You pass your judgement; the script reads the rest from git and the last `verify.ts` run – branch, head, commits,
 changed files, uncommitted paths, the verify result – and prints the report as one JSON block. Empty lists may be
 left out. It refuses a result the facts contradict (exit 1): `ready-for-review` needs the story `in-progress`, a
-clean tree, a green verify on the branch head and no open question or finding; `returned-to-review` needs the story
+clean tree, a green verify on the branch head, nothing that would stop `done` after the merge (a scenario without
+its test, an unticked checklist item) and no open question or finding; `returned-to-review` needs the story
 in `review` and its open question; `blocked` needs only its reason. Fix what it names, or report `blocked`.
 
 **Your last message is that JSON block, verbatim, and nothing after it.** The orchestrator parses it; it starts the

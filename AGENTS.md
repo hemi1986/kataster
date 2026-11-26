@@ -51,11 +51,21 @@ The workflow is spec-driven and mechanical, not a simulated organisation:
   never made in code. The worker starts no subagent, pulls nothing and writes neither `CONTEXT.md` nor ADRs; reviews,
   `done` and the pull request stay with the orchestrator. The cut is the same in both harnesses and enforced in the
   agent files (`disallowedTools` / `subagent: deny`); the manual mode is untouched by it.
+- **Marathon:** `/marathon` (skill `marathon`, user-invoked; `.opencode/commands/marathon.md` only loads it) makes
+  the main session the orchestrator, serial for now (`marathon-plan.ts` refuses `--n` > 1). The decisions are pure
+  functions in `lib/marathon.ts` (`stopReason`, `reviewNext`, `orphanAction`, `mergeErrors`, …) and
+  `marathon/scripts/marathon-state.ts` is the only writer of `.claude/state/marathon.json`: lock file, temp + rename,
+  validated before every write; a stale lock is broken with a warning, a broken state is never overwritten, and
+  `protect-files.ts` blocks hand edits. The skill text carries no decision a script can make – exit 3 means the run
+  stops. How a worker is started and continued differs per harness and is documented in the skill's last table
+  (`Agent` + `SendMessage` / `subagent` + `sessionID`); everything else is one text for both. The quick gate
+  (`stop-gate.ts`) is off while a claim is open.
 - **Reviewers report, never plan:** `code-reviewer` and `acceptance-tester` create no stories. Findings are fixed in
   the story or handed back as open questions.
 - **Story metrics:** `/shape`, `/feature`, `/review-stories` and `/implement` mark phases with
   `.claude/skills/metrics/scripts/story-metrics.ts`. Usage comes from harness adapters (`lib/metrics-claude.ts`,
   `lib/metrics-opencode.ts`) that return the same `Stream` shape; entries store raw tokens only, the report prices
-  them. A skill that marks a phase uses the phase names in `lib/metrics.ts` – one skill text serves both harnesses.
+  them. Reviews (verdict, findings per severity) are records in the same file, written by `story-metrics.ts review`
+  and `marathon-state.ts review`. A skill that marks a phase uses the phase names in `lib/metrics.ts` – one skill text serves both harnesses.
 - The installer prunes the retired workflow files named in `OBSOLETE` (only manifest-tracked, unmodified ones), so a
   removed agent disappears on upgrade without touching optional extras or user files.

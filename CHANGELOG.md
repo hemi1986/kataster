@@ -17,13 +17,61 @@
   without the field.
 - **`/implement` tolerates collected metrics.** Uncommitted files under `docs/stories/metrics/` no longer block the
   clean-tree check; they are committed as `metrics: collect` on the story branch.
+- **Marathon run.** `/marathon` makes the main session the orchestrator of an unattended run, serial for now. Setup
+  cuts the integration branch `marathon/<date>` from the default branch and starts the run with its limits: stories
+  per run (default 6), failures in a row (default 3), the foundation gate (on by default, `--no-gate-foundation`) and
+  an optional budget (`--budget-tokens`, `--budget-usd`) read from the story metrics. Per story the orchestrator
+  plans and claims, starts the `story-worker` with `/implement --worker ST-NNN --base marathon/<date>` and reads its
+  report: `blocked` and `returned-to-review` are escalated with their reason and the run goes on, `ready-for-review`
+  starts the reviewers in the lanes of `/implement` with `review-<agent>` markers. Findings go back to the worker –
+  the same agent session where the harness can continue one, otherwise a fresh worker on the same branch; the second
+  `not accepted` escalates the story. An accepted story is merged into the integration branch, `verify.ts` runs
+  there, the story is set `done`, the report's new terms and ADR proposals are written (the orchestrator alone gives
+  out ADR numbers), `BACKLOG.md` is rendered and the metrics are collected. The run stops when nothing is left to
+  plan, a limit or the budget is reached, the foundation tasks (`type: tech-task`) are merged and another story is
+  next, or `verify.ts` is red on the integration branch – then at once, and nothing is repaired. It ends with a push
+  and one pull request to the default branch (a draft after a red verify): summary, escalations with their reasons,
+  open questions and the metrics of the run's stories. The user merges.
+  - `node .claude/skills/marathon/scripts/marathon-state.ts` is the only writer of `.claude/state/marathon.json`:
+    `start-run`, `claim [--continue]`, `review`, `result merged|failed`, `escalate`, `release`, `resume`, `finish`;
+    `status` and `summary` read. Every write holds a lock file and replaces the state atomically (temp file +
+    rename) after validating it. A stale lock – its process is gone, or it is older than a minute – is broken with a
+    warning; a live one is waited for and then refused. A broken state file is an error for every command and is
+    never overwritten, and `protect-files.ts` blocks hand edits. Exit 3 means the run has to stop.
+  - `result ST-NNN merged` is checked against the facts: the story branch is in the integration branch, the last
+    `verify.ts` run is green, was on the integration branch and covers the merge, only docs and the glossary changed
+    since, and the story is `done`. A second failed pass of a story escalates it.
+  - **Resume.** `/marathon resume` (`marathon-state.ts resume`) goes on with a run that was cut off, also from the
+    other harness. A claim without a running worker is orphaned: with its story branch a worker continues on it and
+    the pass counts as an attempt; without the branch the claim is released; a story that is accepted or merged
+    already goes on with the merge step.
+  - **Both harnesses.** One skill (`.claude/skills/marathon/SKILL.md`); `.opencode/commands/marathon.md` only loads
+    it. Starting and continuing a worker is the one harness difference, documented in the skill: Claude Code uses
+    the `Agent` tool (`subagent_type: story-worker`) and `SendMessage`; OpenCode uses the `subagent` tool
+    (`agent: story-worker`), which returns a `sessionID` at once and delivers the report as a background result –
+    the same tool with that `sessionID` continues the worker (checked against OpenCode 2.4.1). The scripts are
+    covered by the existing allow rule for `.claude/skills/marathon/scripts/*` in `.claude/settings.json`,
+    `.opencode/opencode.jsonc` and the installer.
+  - The decisions are pure functions in `lib/marathon.ts` (`stopReason`, `reviewNext`, `orphanAction`,
+    `mergeErrors`, `nextStep`, `renderSummary`), tested without a repository or an agent.
 - **Marathon planner.** `node .claude/skills/marathon/scripts/marathon-plan.ts [--n <workers>] [--json]` plans the
   next wave of a marathon run: `ready` stories in backlog order whose `depends_on` are all `done`, that no worker has
-  claimed, that the run did not escalate and that are not handed over yet. A `failed` story may run again and keeps
-  its attempt count. The claim state (run ID, integration branch, claims, results, escalations) is read from
-  `.claude/state/marathon.json`, at the same path for both harnesses; the planner never writes it, and a broken file
-  is an error rather than an empty state. `--n` is the worker count, and only 1 is accepted until conflict keys
-  exist. The logic is `planWave()` in `lib/engineering.ts`, next to `nextStory()`.
+  claimed, that the run did not escalate and has not merged yet. A `failed` story may run again and keeps its
+  attempt count. The run state is read from `.claude/state/marathon.json`, at the same path for both harnesses; the
+  planner never writes it, and a broken file is an error rather than an empty state. When the run has to stop, the
+  wave is empty and `STOP` says why. `--n` is the worker count, and only 1 is accepted until conflict keys exist.
+  The logic is `planWave()` in `lib/engineering.ts`, next to `nextStory()`.
+- **Reviews in the story metrics.** `story-metrics.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n>`
+  records one review – who reviewed, the verdict, the findings per severity – next to the story's entries;
+  `report --story` shows them, `--json` carries them. `/implement` records its reviews this way, a marathon run
+  through `marathon-state.ts review`. New phase `integration` for the orchestrator's merge step.
+- **A worker cannot report `ready-for-review` for a story that could not be set `done`.** `worker.ts report` now
+  also refuses when a scenario has no test or a checklist item is unticked – the orchestrator sets `done` after the
+  merge and must not find out there. A worker ticks every checklist item, the last one too, and changes the story
+  status with `--no-tracker`: the tracker is synced by the orchestrator only.
+- **The quick gate waits for the worker.** `stop-gate.ts` does nothing while a marathon run holds a claim: the
+  uncommitted code is a worker's, and the session that ends its turn is the orchestrator waiting for it. The session
+  start names an unfinished run.
 - **Worker mode for `/implement`.** `/implement --worker ST-NNN --base <branch>` builds one given story for an
   orchestrator: no auto-pick and no `git pull`, the story branch is cut from `--base` in the normal checkout, then
   context pack, test plan, characterization, red → green and `verify.ts` run as in the manual mode, with the same

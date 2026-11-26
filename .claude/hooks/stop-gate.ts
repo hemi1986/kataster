@@ -4,12 +4,16 @@
  * Runs the type check and the tests related to the changed files (Vitest). If they fail, Claude is sent back
  * once to fix them (exit 2); `stop_hook_active` prevents a loop – the second time it only reports.
  * The full gate is `node .claude/skills/implement/scripts/verify.ts`.
+ *
+ * Not while a marathon run holds a claim: the uncommitted code then belongs to a worker that is still building, and
+ * the session that ends its turn is the orchestrator waiting for it. The worker's gate is `verify.ts` on the story
+ * branch, the orchestrator's is `verify.ts` on the integration branch.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT } from "../lib/discovery.ts";
-import { appBin, isCode } from "../lib/engineering.ts";
+import { appBin, isCode, readMarathonState } from "../lib/engineering.ts";
 import { changedPaths } from "../lib/git.ts";
 
 let data: Record<string, any>;
@@ -19,6 +23,13 @@ try {
   process.exit(0);
 }
 if (data.stop_hook_active) process.exit(0);
+
+try {
+  const run = readMarathonState();
+  if (run?.status === "running" && Object.keys(run.claims).length) process.exit(0);
+} catch {
+  // a broken marathon state is marathon-state.ts's to report; the gate runs as usual
+}
 
 const changed = changedPaths(ROOT).filter(
   (f) => !f.startsWith(".claude/") && !f.startsWith("docs/") && isCode(f) && existsSync(join(ROOT, f)),

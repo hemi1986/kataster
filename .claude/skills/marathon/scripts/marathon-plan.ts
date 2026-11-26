@@ -2,9 +2,11 @@
  * Plans the next wave of a marathon run: the stories to start now.
  *
  * A story is planned when it is `ready`, all its `depends_on` are `done`, no worker holds a claim on it, the run did
- * not escalate it and it is not handed over already. The claim state is read from .claude/state/marathon.json
+ * not escalate it and has not merged it already. The run state is read from .claude/state/marathon.json
  * (`MARATHON_STATE_FILE` in lib/engineering.ts); without that file no run has started and nothing is claimed.
- * Read-only: the script never writes the state.
+ * A running run also has limits: when one of them is reached (story limit, failures in a row, budget, a red verify
+ * on the integration branch, the foundation gate), the wave is empty and `STOP` says why.
+ * Read-only: the script never writes the state – `marathon-state.ts` does.
  *
  * Harness-neutral: Claude Code and OpenCode run the same command, the state path is resolved from this script's
  * location, not from the cwd.
@@ -14,6 +16,7 @@
 import { parseArgs } from "../../../lib/args.ts";
 import * as d from "../../../lib/discovery.ts";
 import * as e from "../../../lib/engineering.ts";
+import * as m from "../../../lib/marathon.ts";
 
 const USAGE = `Usage: node .claude/skills/marathon/scripts/marathon-plan.ts [--n <workers>] [--json]
 
@@ -44,6 +47,15 @@ try {
 }
 
 const plan = e.planWave(e.storiesById(), state, n);
+// The limits stop a run between stories: with an open claim the story in hand is finished first.
+// An empty plan is a stop reason as well.
+const stop =
+  state?.status === "finished"
+    ? `run ${state.run} is finished (${state.stop?.reason ?? "no reason recorded"})`
+    : state && !plan.claimed.length
+      ? m.stopReason(state, await m.stopFacts(state, plan))
+      : null;
+if (stop) plan.wave = [];
 const brief = (s: d.Story) => ({ id: d.storyId(s), title: s.meta.title, type: s.meta.type, size: s.meta.size, path: d.rel(s.path) });
 
 if (args.flags.has("--json")) {
@@ -52,16 +64,18 @@ if (args.flags.has("--json")) {
       {
         stateFile: d.rel(e.MARATHON_STATE_FILE),
         run: state?.run ?? null,
+        status: state?.status ?? null,
         integrationBranch: state?.integrationBranch ?? null,
         n,
         slots: plan.slots,
         wave: plan.wave.map(({ story, attempts }) => ({ ...brief(story), attempts })),
         eligible: plan.eligible,
         claimed: plan.claimed,
-        handedOver: plan.handedOver,
+        merged: plan.merged,
         escalated: plan.escalated,
         blocked: plan.blocked.map(({ story, waitingFor }) => ({ id: d.storyId(story), waitingFor })),
-        reason: plan.reason,
+        reason: stop ?? plan.reason,
+        stop,
       },
       null,
       2,
@@ -70,7 +84,7 @@ if (args.flags.has("--json")) {
   process.exit(0);
 }
 
-console.log(state ? `RUN          ${state.run} → ${state.integrationBranch}` : "RUN          none started (no .claude/state/marathon.json)");
+console.log(state ? `RUN          ${state.run} → ${state.integrationBranch}${state.status === "finished" ? " (finished)" : ""}` : "RUN          none started (no .claude/state/marathon.json)");
 for (const id of plan.claimed) {
   const c = state!.claims[id];
   console.log(`CLAIMED      ${id} on ${c.branch} since ${c.start} (attempt ${c.attempts})`);
@@ -79,7 +93,8 @@ for (const { story, attempts } of plan.wave) {
   const retry = attempts ? `, ${attempts} earlier attempt(s)` : "";
   console.log(`NEXT         ${d.storyId(story)} – ${story.meta.title} [${story.meta.type}, ${story.meta.size}${retry}] (${d.rel(story.path)})`);
 }
-if (plan.reason) console.log(`NEXT         none – ${plan.reason}`);
+if (stop) console.log(`STOP         ${stop} – end the run`);
+else if (plan.reason) console.log(`NEXT         none – ${plan.reason}`);
 for (const { story, waitingFor } of plan.blocked) console.log(`BLOCKED      ${d.storyId(story)} – waits for ${waitingFor.join(", ")}`);
-if (plan.handedOver.length) console.log(`HANDED OVER  ${plan.handedOver.join(", ")} – waiting for the user's merge`);
+if (plan.merged.length) console.log(`MERGED       ${plan.merged.join(", ")} – in ${state!.integrationBranch}`);
 if (plan.escalated.length) console.log(`ESCALATED    ${plan.escalated.join(", ")} – skipped until the user decides`);

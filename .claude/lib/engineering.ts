@@ -179,56 +179,127 @@ export function nextStory(): { inProgress: d.Story[]; next: d.Story | null; bloc
 }
 
 // --------------------------------------------------------------------------
-// Marathon: claim state and wave planning (`marathon-plan.ts`)
+// Marathon: run state and wave planning (`marathon-plan.ts`, `marathon-state.ts`)
 // --------------------------------------------------------------------------
 /**
- * The claim state of a marathon run. `in-progress` lives on the story branch only, so the default branch cannot
- * tell which stories a run has taken – this file can. Plain JSON under .claude/state/, the same path for both
+ * The state of a marathon run. `in-progress` lives on the story branch only, so the integration branch cannot tell
+ * which stories a run has taken – this file can. Plain JSON under .claude/state/, the same path for both
  * harnesses: it is resolved from this file's location (`d.ROOT`), never from the cwd or a harness variable.
+ *
+ * Read here, written only by `marathon-state.ts` (lib/marathon.ts): locked, atomic, validated.
  *
  * TODO(worktrees): in a git worktree `d.ROOT` is the worktree, not the main checkout – the state path has to be
  * resolved to the main worktree (`git rev-parse --git-common-dir`) before workers run in worktrees.
  */
 export const MARATHON_STATE_FILE = join(d.ROOT, ".claude", "state", "marathon.json");
 
+/** What a reviewer said about a story, as the orchestrator recorded it. */
+export interface MarathonReview {
+  agent: string;
+  verdict: string;
+  blocker: number;
+  major: number;
+  minor: number;
+  question: number;
+  at: string;
+}
+
+/** A decision somebody else has to make – the shape of a worker report's `openQuestions`. */
+export interface MarathonQuestion {
+  question: string;
+  kind: string;
+}
+
+/**
+ * Where a claimed story is: `worker` – a pass runs (or was cut off), `review` – reviews came back with something a
+ * worker has to fix, `merge` – accepted, nothing left to fix. A resumed run reads it to decide how to go on.
+ */
+export const MARATHON_PHASES = ["worker", "review", "merge"] as const;
+export type MarathonPhase = (typeof MARATHON_PHASES)[number];
+
 export interface MarathonClaim {
   /** The story branch the worker builds on. */
   branch: string;
   /** ISO time the claim was taken. */
   start: string;
-  /** Passes started for the story in this run, including this one. */
+  /** Worker passes started for the story in this run, including the current one. */
   attempts: number;
+  /** The story's `type` – the foundation gate needs it after the story left the backlog's `ready`. */
+  type?: string;
+  phase?: MarathonPhase;
+  /** ISO time the current worker pass started; reviews recorded after it form the current round. */
+  passStart?: string;
+  reviews?: MarathonReview[];
 }
 
-/** `handed-over`: the pull request waits for the user's merge. `failed`: the pass gave up; the story may be retried. */
-export const MARATHON_OUTCOMES = ["handed-over", "failed"] as const;
+/**
+ * `merged`: the story branch is in the integration branch and the story is `done` there. `failed`: the pass gave up
+ * without a result (no report, a red verify after the merge); the story may be retried once.
+ */
+export const MARATHON_OUTCOMES = ["merged", "failed"] as const;
 export type MarathonOutcome = (typeof MARATHON_OUTCOMES)[number];
 
 export interface MarathonResult {
   outcome: MarathonOutcome;
-  /** ISO time the pass ended. */
+  /** ISO time the story left its claim. */
   at: string;
   branch?: string;
   /** Passes used so far – a retry continues counting from here. */
   attempts: number;
+  type?: string;
+  reason?: string;
+  /** `failed` only: passes of the story that ended without a result, including this one. */
+  failures?: number;
+  reviews?: MarathonReview[];
+  openQuestions?: MarathonQuestion[];
+  notes?: string[];
 }
 
 export interface MarathonEscalation {
   story: string;
   reason: string;
   at: string;
+  /** The story branch, when one exists – what was built stays there for the user. */
+  branch?: string;
+  attempts?: number;
+  type?: string;
+  reviews?: MarathonReview[];
+  openQuestions?: MarathonQuestion[];
+  notes?: string[];
+}
+
+export interface MarathonLimits {
+  /** Stories a run may start. */
+  maxStories: number;
+  /** Stories in a row that may end without a merge (escalated or failed) before the run stops. */
+  maxFailures: number;
+  /** Stop once the foundation tasks (`type: tech-task`) of the run are merged and a different story is next. */
+  gateFoundation: boolean;
+  /** Tokens the run's stories may use (input + output + cache read + cache write), or null. */
+  budgetTokens: number | null;
+  /** Cost the run's stories may reach, priced from `metrics.prices`, or null. */
+  budgetUsd: number | null;
 }
 
 export interface MarathonState {
   version: 1;
   run: string;
   integrationBranch: string;
-  /** Story ID → open claim. A story leaves `claims` when its pass ends. */
+  /** The branch the integration branch was cut from and the pull request goes to. */
+  base: string;
+  status: "running" | "finished";
+  startedAt: string;
+  limits: MarathonLimits;
+  /** Stories in a row that ended without a merge; a merge resets it. */
+  consecutiveFailures: number;
+  /** Story ID → open claim. A story leaves `claims` when it is merged, failed, escalated or released. */
   claims: Record<string, MarathonClaim>;
   /** Story ID → outcome of its last pass. */
   results: Record<string, MarathonResult>;
   /** Stories the run gave up on; they wait for the user and are never planned again in this run. */
   escalations: MarathonEscalation[];
+  /** Why and when the run ended, and its pull request once it is open. Present when `status` is `finished`. */
+  stop?: { reason: string; at: string; pr: string | null };
 }
 
 /** Problems with a parsed state file; empty means it is a valid `MarathonState`. */
@@ -237,14 +308,27 @@ export function marathonStateErrors(raw: unknown): string[] {
   const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
   const str = (v: unknown): boolean => typeof v === "string" && v.length > 0;
   const count = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0;
+  const amount = (v: unknown): boolean => v === null || (typeof v === "number" && Number.isFinite(v) && v > 0);
+  const reviews = (v: unknown): boolean =>
+    v === undefined || (Array.isArray(v) && v.every((r) => obj(r) && str(r.agent) && str(r.verdict) && str(r.at) && ["blocker", "major", "minor", "question"].every((k) => count(r[k]))));
   if (!obj(raw)) return ["the state is not a JSON object"];
   if (raw.version !== 1) errs.push(`version must be 1, is ${JSON.stringify(raw.version)}`);
   if (!str(raw.run)) errs.push("run (the run ID) is missing");
   if (!str(raw.integrationBranch)) errs.push("integrationBranch is missing");
+  if (!str(raw.base)) errs.push("base (the branch the run was cut from) is missing");
+  if (raw.status !== "running" && raw.status !== "finished") errs.push(`status must be running or finished, is ${JSON.stringify(raw.status)}`);
+  if (!str(raw.startedAt)) errs.push("startedAt is missing");
+  if (!count(raw.consecutiveFailures)) errs.push("consecutiveFailures must be a whole number ≥ 0");
+  const l = raw.limits;
+  if (!obj(l) || !count(l.maxStories) || !count(l.maxFailures) || typeof l.gateFoundation !== "boolean" || !amount(l.budgetTokens) || !amount(l.budgetUsd)) {
+    errs.push("limits needs maxStories, maxFailures, gateFoundation, budgetTokens and budgetUsd (a number > 0 or null)");
+  }
   if (!obj(raw.claims)) errs.push("claims must be an object (story ID → claim)");
   else {
     for (const [id, c] of Object.entries(raw.claims)) {
       if (!obj(c) || !str(c.branch) || !str(c.start) || !count(c.attempts)) errs.push(`claim ${id} needs branch, start and attempts`);
+      else if (c.phase !== undefined && !(MARATHON_PHASES as readonly unknown[]).includes(c.phase)) errs.push(`claim ${id}: phase must be ${MARATHON_PHASES.join(", ")}`);
+      else if (!reviews(c.reviews)) errs.push(`claim ${id}: every review needs agent, verdict, at and the four counts`);
     }
   }
   if (!obj(raw.results)) errs.push("results must be an object (story ID → result)");
@@ -260,6 +344,9 @@ export function marathonStateErrors(raw: unknown): string[] {
     raw.escalations.forEach((e, i) => {
       if (!obj(e) || !str(e.story) || typeof e.reason !== "string" || !str(e.at)) errs.push(`escalation #${i + 1} needs story, reason and at`);
     });
+  }
+  if (raw.status === "finished" && (!obj(raw.stop) || typeof raw.stop.reason !== "string" || !str(raw.stop.at))) {
+    errs.push("a finished run needs stop (reason, at, pr)");
   }
   return errs;
 }
@@ -290,7 +377,8 @@ export interface WavePlan {
   eligible: number;
   claimed: string[];
   escalated: string[];
-  handedOver: string[];
+  /** Stories the run merged into the integration branch. */
+  merged: string[];
   blocked: { story: d.Story; waitingFor: string[] }[];
   /** Why the wave is empty; null when it is not. */
   reason: string | null;
@@ -298,7 +386,7 @@ export interface WavePlan {
 
 /**
  * The next wave of a marathon run: `ready` stories in backlog order whose `depends_on` are all `done`, that no
- * worker holds, that the run did not escalate and that are not handed over already. A `failed` story may run again;
+ * worker holds, that the run did not escalate and that it has not merged already. A `failed` story may run again;
  * its earlier attempts are carried over. `n` is the number of workers – the wave fills the slots that open claims
  * leave free.
  *
@@ -310,14 +398,14 @@ export function planWave(stories: Map<string, d.Story>, state: MarathonState | n
   const results = state?.results ?? {};
   const claimed = new Set(Object.keys(claims));
   const escalated = new Set((state?.escalations ?? []).map((e) => e.story));
-  const handedOver = new Set(Object.entries(results).filter(([, r]) => r.outcome === "handed-over").map(([id]) => id));
+  const merged = new Set(Object.entries(results).filter(([, r]) => r.outcome === "merged").map(([id]) => id));
 
   const ready = readyInOrder(stories);
   const blocked: WavePlan["blocked"] = [];
   const candidates: d.Story[] = [];
   for (const s of ready) {
     const id = d.storyId(s);
-    if (claimed.has(id) || escalated.has(id) || handedOver.has(id)) continue;
+    if (claimed.has(id) || escalated.has(id) || merged.has(id)) continue;
     const waitingFor = openDeps(s, stories);
     if (waitingFor.length) blocked.push({ story: s, waitingFor });
     else candidates.push(s);
@@ -338,7 +426,7 @@ export function planWave(stories: Map<string, d.Story>, state: MarathonState | n
     else if (!slots && candidates.length) reason = `no free worker – ${claimed.size} open claim(s) for N = ${n}`;
     else if (!ready.length) reason = "no story is ready";
     else if (blocked.length) reason = "every startable story waits for dependencies that are not done";
-    else reason = "every ready story is claimed, handed over or escalated";
+    else reason = "every ready story is claimed, merged or escalated";
   }
   return {
     wave,
@@ -346,7 +434,7 @@ export function planWave(stories: Map<string, d.Story>, state: MarathonState | n
     eligible: candidates.length,
     claimed: [...claimed],
     escalated: [...escalated],
-    handedOver: [...handedOver],
+    merged: [...merged],
     blocked,
     reason,
   };

@@ -129,6 +129,7 @@ Existing `CONTEXT.md` and `docs/` are never touched.
 | `/backlog-sync [status\|pull\|push]` | Keep `docs/stories/` in sync with GitHub Issues or Jira |
 | `/groom-backlog [scope]` | Periodic challenge: is this backlog still worth building? |
 | `/implement [ST-NNN] [--fast]` | One story on its branch: domain = test-first, diff-scaled review, acceptance; `chore`/`task` or `--fast` = fast lane without Gherkin matching or formal reviews; `--prototype` settles an open UI question first; `--worker ST-NNN --base <branch>` is the worker mode an orchestrator starts |
+| `/marathon [resume]` | Unattended run: the main session orchestrates story after story – claim, `story-worker`, reviews, merge into `marathon/<date>`, verify – and ends with one pull request; `--max-stories`, `--max-failures`, `--no-gate-foundation`, `--budget-tokens`, `--budget-usd` |
 | `/improve-codebase-architecture` | Scan for deepening opportunities, present them, grill one |
 | `/retro` | Retrospective on a session, proposing rule changes |
 
@@ -399,6 +400,50 @@ For Jira, `jira-plan.ts` prints the exact MCP calls, `jira-record.ts` writes the
   code. The worker picks no story, pulls nothing, starts no reviewer and writes neither `CONTEXT.md` nor ADRs; the
   orchestrator reviews and sends findings back to the same branch. The cut is identical in Claude Code and OpenCode
   and enforced by the agent (no subagent tool, no questions).
+
+## Marathon runs
+
+`/marathon` turns the main session into the **orchestrator** of an unattended run. It builds nothing itself: story
+after story it takes the next planned story, hands it to a `story-worker`, reads the worker's report, runs the
+reviews, merges the story branch into the run's integration branch and verifies there. You get one pull request at
+the end – and you merge.
+
+```
+/marathon                                   # 6 stories, 3 failures in a row, foundation gate on
+/marathon --max-stories 10 --budget-usd 40  # more stories, with a cost budget from the story metrics
+/marathon resume                            # go on with a run that was cut off – also from the other harness
+```
+
+- **Serial.** One claim, one worker at a time; `marathon-plan.ts` still refuses `--n` > 1 until conflict keys exist.
+- **Setup.** `marathon-state.ts start-run` cuts `marathon/<date>` from the default branch and writes the run's state:
+  the limits (stories per run, failures in a row), the foundation gate and an optional token or cost budget.
+- **Per story.** Plan and claim → `story-worker` with `/implement --worker ST-NNN --base marathon/<date>` → the
+  report decides: `blocked` and `returned-to-review` are escalated with their reason and the run goes on;
+  `ready-for-review` starts the reviewers in the lanes of `/implement`. Findings go back to the worker – the same
+  agent session where the harness can continue one, otherwise a fresh worker on the same branch. A second
+  `not accepted` escalates the story. Then: merge into the integration branch, `verify.ts` there, `done`, new
+  glossary terms and `proposed` ADRs from the report (the orchestrator alone gives out ADR numbers), `BACKLOG.md`,
+  metrics.
+- **It stops** when nothing is left to plan, a limit or the budget is reached, the foundation tasks
+  (`type: tech-task`) are merged and a different story is next, or `verify.ts` is red on the integration branch –
+  then immediately, and nothing is repaired.
+- **The end.** The integration branch is pushed and a pull request to the default branch is opened (a draft after a
+  red verify) with the summary, every escalation with its reason, the open questions and the metrics of the run's
+  stories. Escalated stories keep their local story branch.
+- **One writer.** `.claude/state/marathon.json` changes only through `marathon-state.ts` (`start-run`, `claim`,
+  `review`, `result`, `escalate`, `release`, `resume`, `finish`; `status` and `summary` read): every write is locked
+  and atomic, a stale lock is broken with a warning, a broken state file is an error and is never overwritten, and a
+  hook blocks hand edits. `result … merged` is checked against git and the last verify run.
+- **Resumable.** A claim without a running worker is orphaned: when its story branch exists a worker continues on it
+  and the pass counts as an attempt, otherwise the claim is released. The state is a plain file at the same path for
+  both harnesses, so a run started in Claude Code can be resumed in OpenCode and the other way round.
+- **Workers per harness.** Claude Code: `Agent` tool with `subagent_type: story-worker`, continued with `SendMessage`.
+  OpenCode: `subagent` tool with `agent: story-worker`; the call returns a `sessionID` and the report arrives as a
+  background result; the same tool with that `sessionID` continues the worker.
+
+An unattended run waits at every permission prompt. The workflow scripts are allowed in both harnesses; `git`
+commits, merges and pushes, `gh pr create` and your test commands follow your own permission settings – allow them
+(or run the harness in its auto mode) before you leave a run alone.
 
 ## Story metrics
 
