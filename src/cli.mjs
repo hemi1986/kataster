@@ -3,10 +3,11 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import { Installer, VERSION } from "./install.mjs";
+import { ALLOW, Installer, OPENCODE_ALLOW, VERSION } from "./install.mjs";
 import { buildProfile, detectProject } from "./detect.mjs";
 import { readJson, write } from "./util.mjs";
 import { formatToolIgnoreHint, toolIgnoreGaps } from "./tool-ignores.mjs";
+import { claudeShadowed, consequence, earlierConfigs, overridden, readConfig, rulesOf, shadowed, TARGET_CONFIG } from "./permissions.mjs";
 
 const HELP = `Kataster ${VERSION} – agent workflow for domain-driven discovery and delivery
 
@@ -124,6 +125,15 @@ function printSummary(installer) {
     for (const c of conflicts) console.log(`  - ${c}`);
     console.log("  Run with --force to overwrite them (a backup is written to .kataster/backup/).");
   }
+  printNotes(installer);
+}
+
+function printNotes(installer) {
+  const { notes } = installer.summary();
+  if (!notes.length) return;
+  console.log("\nPermissions – please check:");
+  for (const note of notes) console.log(`  - ${note}`);
+  console.log("  `kataster doctor` says what does not work because of this.");
 }
 
 async function init(options) {
@@ -181,6 +191,7 @@ async function init(options) {
   installer.writeManifest();
 
   if (options.dryRun) {
+    printNotes(installer);
     console.log("\nDry run – nothing was written.");
     return;
   }
@@ -231,6 +242,7 @@ async function upgrade(options) {
   }
 
   if (options.dryRun) {
+    printNotes(installer);
     console.log("\nDry run – nothing was written.");
     return;
   }
@@ -267,6 +279,67 @@ function lintStory(options) {
   if (options.json) args.push("--json");
   const r = spawnSync(process.execPath, args, { cwd: root, stdio: "inherit" });
   process.exitCode = r.status ?? 1;
+}
+
+const listed = (rules, max = 4) => {
+  const names = rules.map((r) => `\`${r.resource}\``);
+  return names.length > max ? `${names.slice(0, max).join(", ")} and ${names.length - max} more` : names.join(", ");
+};
+
+/**
+ * Kataster's permission rules against the project's: which of ours do not take effect and what that means, which of
+ * the project's rules one of ours overrides, and a settings file that could not be merged.
+ */
+function permissionFindings(root) {
+  const out = [];
+  const read = (path) => readFileSync(path, "utf8");
+
+  const target = join(root, ".opencode", "opencode.jsonc");
+  if (existsSync(target)) {
+    const configs = [...earlierConfigs(root), { file: TARGET_CONFIG, config: readConfig(read(target)) }];
+    for (const { file, config } of configs) {
+      if (!config) out.push({ name: `OpenCode: ${file} cannot be read`, detail: "its permission rules cannot be checked", warn: true });
+      else if (config.permissions !== undefined && !Array.isArray(config.permissions)) {
+        out.push({
+          name: `OpenCode: 'permissions' in ${file} is not a rule list`,
+          detail: "Kataster adds its rules to a list only, and cannot check this one",
+          warn: true,
+        });
+      }
+    }
+    const all = rulesOf(configs);
+    for (const { by, rules } of shadowed(all, OPENCODE_ALLOW)) {
+      out.push({
+        name: `OpenCode: ${rules.length} Kataster rule(s) do not take effect because of your \`${by.action} ${by.resource}\` ${by.effect}`,
+        detail: `${by.file} – ${consequence(rules, by.effect)}; ${listed(rules)}. Keep it if that is what you want`,
+        warn: true,
+      });
+    }
+    for (const { rule, by } of overridden(all, OPENCODE_ALLOW)) {
+      out.push({
+        name: `OpenCode: your \`${rule.action} ${rule.resource}\` ${rule.effect} is overridden by a Kataster rule after it`,
+        detail: `${rule.file} – ${listed(by)} wins where both match (the last matching rule does); move yours after the Kataster rules`,
+        warn: true,
+      });
+    }
+  }
+
+  const settings = [];
+  for (const file of [".claude/settings.json", ".claude/settings.local.json"]) {
+    if (!existsSync(join(root, file))) continue;
+    const parsed = readJson(join(root, file));
+    // Not advisory for the shared file: without it the hooks that guard the workflow are not wired up.
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) out.push({ name: `Claude Code: ${file} is not plain JSON`, detail: "fix it and run upgrade", warn: file.endsWith("local.json") });
+    else settings.push({ file, permissions: parsed.permissions });
+  }
+  for (const { by, rules } of claudeShadowed(settings, ALLOW)) {
+    out.push({
+      name: `Claude Code: ${rules.length} Kataster rule(s) do not take effect because of your \`${by.resource}\` ${by.effect}`,
+      detail: `${by.file} – ${consequence(rules, by.effect)}; ${listed(rules)}. Keep it if that is what you want`,
+      warn: true,
+    });
+  }
+  return out;
 }
 
 /** ADRs in docs/adr/ without a `status:` key in their YAML frontmatter – the accepted-ADR guard cannot see them. */
@@ -390,6 +463,8 @@ function doctor(options) {
   } else if (existsSync(events)) {
     add("events.yaml valid", true, "skipped – tooling dependencies missing");
   }
+
+  for (const finding of permissionFindings(root)) add(finding.name, false, finding.detail, { warn: finding.warn });
 
   banner();
   console.log(`Doctor – ${root}\n`);

@@ -17,6 +17,12 @@ Rules:
   come from `.claude/project.json`; examples in skills use neutral domains.
 - Every new workflow file goes into both harnesses (`.claude/agents` and `.opencode/agents`, command in
   `.opencode/commands`) or is deliberately harness-specific and documented as such.
+- **Never loosen a project's permissions.** A project `deny` always wins and its `ask` yields only to Kataster's own
+  scripts: `src/permissions.mjs` decides where an `ALLOW` rule goes in OpenCode (in front of the rule it would
+  override, or nowhere when that rule comes from an earlier config or key) and what `doctor` warns about. A settings
+  file that cannot be parsed is never rewritten. A hook never rewrites a command that a `deny` or `ask` rule matches
+  only as written (`.claude/lib/permission-rules.ts`) – both harnesses judge the rewritten command. The order OpenCode
+  merges its configs in was measured with `opencode debug agents` (2.4.1); check it again for a new major version.
 - A file the installer manages is tracked in `.claude/install.json`; project content (`CONTEXT.md`, `docs/`,
   `project.json`, `AGENTS.md` block) is not. Never make an upgrade overwrite user content.
 - Run `npm test` and `npm run typecheck --prefix .claude` before committing.

@@ -24,7 +24,8 @@ The installer:
 - copies `.claude/`, `.opencode/`, `AGENTS.md` and the `docs/` skeleton,
 - **merges** into an existing `AGENTS.md` (marker block), `.claude/settings.json` (hooks and permissions) and
   `.opencode/opencode.jsonc` (watcher ignore list, the `shell` permission rules that mirror Claude Code's allow
-  list – the project's own rules stay first – and `"automations": false` unless the project set the key itself);
+  list – placed so that no `deny` of the project and no `ask` outside Kataster's own scripts loses against them, or
+  left out; `doctor` reports what is held back – and `"automations": false` unless the project set the key itself);
   the file is edited in place, so its comments, key order and formatting stay as the project wrote them,
 - detects stack, package manager, code roots and commands into `.claude/project.json`,
 - records the backlog backend in `.claude/project.json` (`local`, `github` or `jira`),

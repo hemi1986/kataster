@@ -5,7 +5,9 @@
  *                       --harness, --session, --agent/--agent-type (subagents), --transcript. A `worker.ts start|report`
  *                       or `marathon-state.ts <command>` call gets `--caller <harness>:<id>` – the marathon lease
  *                       (lib/lease.ts) decides with it who may write. The command is rewritten through `updatedInput`;
- *                       the permission decision stays with the harness.
+ *                       the permission decision stays with the harness. The harness judges the rewritten command, so
+ *                       a command that a `deny` or `ask` rule matches only as written is left as it is
+ *                       (lib/permission-rules.ts).
  *   PermissionRequest   logs `permission.asked` – the wait ends at the stream's next transcript line.
  *   KatasterEvent       (OpenCode plugin) permission.asked/replied and form.created/replied/cancelled → wait events.
  *   SessionEnd          finalises this session's metrics (entries not written yet, open phases, the unassigned pot).
@@ -16,7 +18,10 @@
  * `npm install --prefix .claude`.
  */
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { callerOf } from "../lib/lease.ts";
+import { ruleLostByRewrite } from "../lib/permission-rules.ts";
 import { segments } from "../lib/shell.ts";
 
 let data: Record<string, any>;
@@ -81,7 +86,16 @@ try {
     const command = data.tool_name === "Bash" ? data.tool_input?.command : undefined;
     const marked = typeof command === "string" ? rewriteMark(command, data) ?? command : null;
     const tagged = marked === null ? null : rewriteCaller(marked, data) ?? marked;
-    const next = tagged !== null && tagged !== command ? tagged : null;
+    let next = tagged !== null && tagged !== command ? tagged : null;
+    if (next) {
+      // The project these hooks are installed in.
+      const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+      const lost = ruleLostByRewrite(harness, root, command as string, next);
+      if (lost !== null) {
+        debug(`not rewritten: the rule '${lost}' matches the command only as written`);
+        next = null;
+      }
+    }
     if (next) {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { ...data.tool_input, command: next } } }));
     }

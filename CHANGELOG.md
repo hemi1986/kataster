@@ -1,162 +1,135 @@
 # Changelog
 
-## Unreleased
+## 0.7.0 – 2026-11-26
 
-- **Merge blockers.** Security and data protection (personal data exposed, a missing authorization check,
-  injection), a 5xx answer to client input and an inconsistency that breaks a domain rule (a uniqueness that
-  normalisation gets around) never pass as *decided with a default* or as an open question. Only the explicit tag
-  blocks: the reviewers file them as blockers tagged `merge-blocker: <kind>` (their prompts demand it), and
-  `marathon-state.ts review` counts the tagged rows of the review file. A merge blocker sends the story into a fix
-  pass with the reviewer who found it again; reported again after that, the story is escalated. `worker.ts report`,
-  the merge gate and the new read-only `merge-check` (run before `git merge`) refuse a tagged one – open in a
-  reviewer's last review, or as a decision or an open question. `lib/merge-blockers.ts` also recognises the six kinds
-  in untagged text; that never blocks: `review` prints a `WARN` for an untagged finding that reads like one,
-  `worker.ts report` a `⚠` for such a decision, `merge-check` a `POSSIBLE` line, and the run's summary (the pull
-  request) and the orchestrator's last message list them under *Possible merge blockers – please check*.
-- **Upgrade keeps comments in `opencode.jsonc`.** The installer edited the file by parsing and re-serialising it, so
-  every comment and the project's formatting were lost on upgrade. It now edits the text in place
-  (`src/jsonc.mjs`, no dependency): missing keys, rules and watcher globs are inserted at the end of their object or
-  list, in the indentation and one-line style of their neighbours; everything else stays byte for byte, and an
-  upgrade with nothing to add leaves the file unchanged.
-- **OpenCode automations off by default.** `.opencode/opencode.jsonc` ships `"automations": false`; init and upgrade
-  add it where the project did not set the key (a project's own value is kept). Why: in the marathon test run an
-  agent whose shell commands were denied searched the Code Mode tools for another way, and `automation.create` would
-  have run a shell command later – outside the session's permission rules and the Kataster hooks. `marathon-guard.ts`
-  still blocks creating one during a run for projects that turn them back on.
-- **Marathon: one session at a time, enforced.** A real run left two orchestrators and two workers on one checkout
-  (OpenCode runs sessions in its background service, a closed TUI stops nothing). The run now has a lease
-  (`.claude/state/marathon-lease.json`, `lib/lease.ts`): `start-run`/`resume` make the calling session the
-  orchestrator, `worker.ts start` the calling worker the holder of its story; the hooks append `--caller` to
-  `worker.ts` and `marathon-state.ts` calls (`hooks/metrics.ts`). A replaced session is refused by the scripts and
-  blocked on every tool call by the new `marathon-guard.ts` hook in both harnesses; `resume` supersedes the worker of
-  a continued claim at once. The `git status` heuristic in the skill is gone. Scheduling work for later (Claude Code's
-  cron/triggers/wakeups, OpenCode automations, also from a Code Mode script) is blocked while a run runs.
-- **Marathon: a report is never lost.** `worker.ts report` keeps the report of a claimed story
-  (`.claude/state/marathon-reports/ST-NNN.json`); `resume` prints `REPORT` and reads it instead of starting another
-  pass when the branch head is unchanged. A pass after a cut-off is counted as `resumed` and shown as such in the
-  summary – it is no failure.
-- **Decided with a default.** Worker reports carry `decisions` (`question`, `decision`, `why`) for technical details
-  the story and the conventions leave open; they do not block `ready-for-review`. The implement skill states when a
-  worker decides (technical, conservative, following the conventions, cheap to change) and that a missing rule is no
-  question; domain gaps stay `blocked`. `result … merged` takes them, the summary lists them under *Decided with a
-  default – confirm or change*. Reviewer questions no longer go into a worker's task.
-- **Merge gate.** `result … merged` refuses a `domain`, `tech-task` or `spike` story without an accepting
-  `acceptance-tester` review, and a stale repository map; the skill runs `repo-map.ts` after each merge (`AGENTS.md`
-  counts as bookkeeping for the generated block).
-- **Metrics before the pull request.** `story-metrics.ts collect --since <ISO time>` finalises every session with a
-  marker since then, idle or not; `finish` prints it with the run's start, so the pull request's metrics include the
-  tokens spent outside a phase (in OpenCode they were missing until the next session start).
-- **No heredocs in the skills.** Claude Code refuses a heredoc in `dontAsk` mode; `--details` JSON is written to
-  `.kataster/details/` and passed as a file.
-- **Input and errors.** The conventions template, the conventions skill and the foundation guidance ask how a
-  malformed request is answered, how text is normalised, which limits exist and in which time zone "today" is taken;
-  `/feature` grills validation, limits, normalisation and error behaviour per command.
+A minor release with three new features – story metrics, the worker mode of `/implement` and the marathon run – and a
+few changed defaults. **Read *Behaviour changes* before you upgrade from 0.6.x.**
+
+### New
 
 - **Story metrics.** `story-metrics.ts mark <ST-NNN|feature:<slug>> <phase> start|end` marks a phase; `/shape`,
   `/feature`, `/review-stories` and `/implement` mark theirs. Tokens (input, output incl. reasoning, cache
   read/write), model, harness, agent time and user wait time land append-only in `docs/stories/metrics/`, one entry
-  per pass, stream and model; tokens outside every phase go to an `unassigned` pot. Two adapters read the usage:
-  Claude Code transcripts (with `subagents/`) and the OpenCode database (read-only, `node:sqlite`, child sessions,
-  legacy-table fallback, schema check). A PreToolUse hook / the plugin adds the caller's session and subagent id to
-  the marker; `PermissionRequest`, OpenCode's `permission.*`/`form.*` events and `SessionStart`/`SessionEnd` complete
-  waits and finalise sessions. `story-metrics.ts report [--story|--feature|--since] [--json]` prices tokens from
-  `metrics.prices` in `.claude/project.json` (no built-in prices), splits a feature's spec cost across its stories
-  by scenarios/checklist items, and compares `size` with the actual cost.
-- **`feature` in the story frontmatter.** `feature: <slug>` links a story to the `/feature` run that derived it; the
-  linter refuses a mismatch with the `feature:<slug>` label and more than one feature label, and warns about a label
-  without the field.
-- **`/implement` tolerates collected metrics.** Uncommitted files under `docs/stories/metrics/` no longer block the
-  clean-tree check; they are committed as `metrics: collect` on the story branch.
-- **Marathon run.** `/marathon` makes the main session the orchestrator of an unattended run, serial for now. Setup
-  cuts the integration branch `marathon/<date>` from the default branch and starts the run with its limits: stories
-  per run (default 6), failures in a row (default 3), the foundation gate (on by default, `--no-gate-foundation`) and
-  an optional budget (`--budget-tokens`, `--budget-usd`) read from the story metrics. Per story the orchestrator
-  plans and claims, starts the `story-worker` with `/implement --worker ST-NNN --base marathon/<date>` and reads its
-  report: `blocked` and `returned-to-review` are escalated with their reason and the run goes on, `ready-for-review`
-  starts the reviewers in the lanes of `/implement` with `review-<agent>` markers. Findings go back to the worker –
-  the same agent session where the harness can continue one, otherwise a fresh worker on the same branch; the second
-  `not accepted` escalates the story. An accepted story is merged into the integration branch, `verify.ts` runs
-  there, the story is set `done`, the report's new terms and ADR proposals are written (the orchestrator alone gives
-  out ADR numbers), `BACKLOG.md` is rendered and the metrics are collected. The run stops when nothing is left to
-  plan, a limit or the budget is reached, the foundation tasks (`type: tech-task`) are merged and another story is
-  next, or `verify.ts` is red on the integration branch – then at once, and nothing is repaired. It ends with a push
-  and one pull request to the default branch (a draft after a red verify): summary, escalations with their reasons,
-  open questions and the metrics of the run's stories. The user merges.
-  - `node .claude/skills/marathon/scripts/marathon-state.ts` is the only writer of `.claude/state/marathon.json`:
-    `start-run`, `claim [--continue]`, `review`, `result merged|failed`, `escalate`, `release`, `resume`, `finish`;
-    `status` and `summary` read. Every write holds a lock file and replaces the state atomically (temp file +
-    rename) after validating it. A stale lock – its process is gone, or it is older than a minute – is broken with a
-    warning; a live one is waited for and then refused. A broken state file is an error for every command and is
-    never overwritten, and `protect-files.ts` blocks hand edits. Exit 3 means the run has to stop.
-  - `result ST-NNN merged` is checked against the facts: the story branch is in the integration branch, the last
-    `verify.ts` run is green, was on the integration branch and covers the merge, only docs and the glossary changed
-    since, and the story is `done`. A second failed pass of a story escalates it.
-  - **Resume.** `/marathon resume` (`marathon-state.ts resume`) goes on with a run that was cut off, also from the
-    other harness. A claim without a running worker is orphaned: with its story branch a worker continues on it and
-    the pass counts as an attempt; without the branch the claim is released; a story that is accepted or merged
-    already goes on with the merge step.
-  - **Both harnesses.** One skill (`.claude/skills/marathon/SKILL.md`); `.opencode/commands/marathon.md` only loads
-    it. Starting and continuing a worker is the one harness difference, documented in the skill: Claude Code uses
-    the `Agent` tool (`subagent_type: story-worker`) and `SendMessage`; OpenCode uses the `subagent` tool
-    (`agent: story-worker`), which returns a `sessionID` at once and delivers the report as a background result –
-    the same tool with that `sessionID` continues the worker (checked against OpenCode 2.4.1). The scripts are
-    covered by the existing allow rule for `.claude/skills/marathon/scripts/*` in `.claude/settings.json`,
-    `.opencode/opencode.jsonc` and the installer.
-  - The decisions are pure functions in `lib/marathon.ts` (`stopReason`, `reviewNext`, `orphanAction`,
-    `mergeErrors`, `nextStep`, `renderSummary`), tested without a repository or an agent.
-- **Marathon planner.** `node .claude/skills/marathon/scripts/marathon-plan.ts [--n <workers>] [--json]` plans the
-  next wave of a marathon run: `ready` stories in backlog order whose `depends_on` are all `done`, that no worker has
-  claimed, that the run did not escalate and has not merged yet. A `failed` story may run again and keeps its
-  attempt count. The run state is read from `.claude/state/marathon.json`, at the same path for both harnesses; the
-  planner never writes it, and a broken file is an error rather than an empty state. When the run has to stop, the
-  wave is empty and `STOP` says why. `--n` is the worker count, and only 1 is accepted until conflict keys exist.
-  The logic is `planWave()` in `lib/engineering.ts`, next to `nextStory()`.
-- **Reviews in the story metrics.** `story-metrics.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n>`
-  records one review – who reviewed, the verdict, the findings per severity – next to the story's entries;
-  `report --story` shows them, `--json` carries them. `/implement` records its reviews this way, a marathon run
-  through `marathon-state.ts review`. New phase `integration` for the orchestrator's merge step.
-- **A worker cannot report `ready-for-review` for a story that could not be set `done`.** `worker.ts report` now
-  also refuses when a scenario has no test or a checklist item is unticked – the orchestrator sets `done` after the
-  merge and must not find out there. A worker ticks every checklist item, the last one too, and changes the story
-  status with `--no-tracker`: the tracker is synced by the orchestrator only.
-- **The quick gate waits for the worker.** `stop-gate.ts` does nothing while a marathon run holds a claim: the
-  uncommitted code is a worker's, and the session that ends its turn is the orchestrator waiting for it. The session
-  start names an unfinished run.
+  per pass, stream and model; tokens outside every phase go to an `unassigned` pot. Claude Code is read from the
+  transcripts (with `subagents/`), OpenCode from its database (read-only, `node:sqlite`, child sessions included).
+  - `story-metrics.ts report [--story|--feature|--since] [--json]` prices the tokens from `metrics.prices` in
+    `.claude/project.json` (no built-in prices – an unpriced model shows `–`), splits a feature's spec cost across
+    its stories and compares `size` with the actual cost. `collect --since <ISO time>` finalises every session with a
+    marker since then, idle or not.
+  - `story-metrics.ts review ST-NNN <agent> --verdict … --blocker … --major … --minor … --question …` records one
+    review: who reviewed, the verdict, the findings per severity. `/implement` records its reviews this way.
 - **Worker mode for `/implement`.** `/implement --worker ST-NNN --base <branch>` builds one given story for an
-  orchestrator: no auto-pick and no `git pull`, the story branch is cut from `--base` in the normal checkout, then
-  context pack, test plan, characterization, red → green and `verify.ts` run as in the manual mode, with the same
-  phase markers. The worker starts no reviews and ends after verify. Instead of asking the user it returns a JSON
-  report: `result` (`ready-for-review` | `blocked` | `returned-to-review`), `reason`, branch, commits, changed files,
-  the verify result, review findings and what became of them, new terms, ADR proposals and open questions. `blocked`
-  is a result of equal rank: an open domain or technical decision is reported, never decided in code. A worker is
-  resumable – when the story branch exists, the pass is a continuation that reads the branch and the review files,
-  fixes the findings in the same branch and reports again. The manual mode is unchanged.
-  - `node .claude/skills/implement/scripts/worker.ts start|report` are the mechanical ends of a pass. `start` checks
-    the base, the tree and the story's status on the base and creates or switches to the story branch. `report`
-    reads branch, commits, changed files and the verify result from git and the last `verify.ts` run, and refuses a
-    result the facts contradict – `ready-for-review` needs a clean tree, a green verify on the branch head and no
-    open question.
-  - New agent `story-worker` in both harnesses, the same instructions in each. That a worker starts no subagent is
-    enforced, not only written down: `disallowedTools: Agent` in Claude Code – where subagents may otherwise nest
-    three levels deep – and `subagent: deny` in OpenCode. Both also block questions and writes to `CONTEXT.md`,
-    `docs/adr/` and `docs/reviews/`; `path-guard.ts` learned `--deny` for that.
-  - Hooks in a worker: the tool hooks (protect-files, bash-guard, metrics identity, validate-docs, code-check,
-    project checks) run for subagents and child sessions in both harnesses. The quick gate at the end of a turn does
-    not – Claude Code fires `Stop` for the main session only, the OpenCode plugin skips child sessions – and that is
-    kept on purpose: the worker's gate is `verify.ts`, and a message after its last turn would produce a second
-    report.
-- **The quick gate no longer loses the first changed file.** `stop-gate.ts`, `characterize.ts` and `affected.ts`
+  orchestrator, with no auto-pick and no `git pull`: the story branch is cut from `--base`, then context pack, test
+  plan, characterization, red → green and `verify.ts` run as in the manual mode. The worker starts no reviews and no
+  subagents (enforced by the new `story-worker` agent in both harnesses) and returns a JSON report instead of asking:
+  `ready-for-review`, `blocked` or `returned-to-review`. A technical detail the story and the conventions leave open
+  is settled with a conservative default and listed under `decisions`; a domain gap is `blocked`, never decided in
+  code. `worker.ts start|report` read the facts from git and the last verify run, and `report` refuses a result they
+  contradict. The manual mode is unchanged by this.
+- **Merge blockers.** Security and data protection (personal data exposed, a missing authorization check,
+  injection), a 5xx answer to client input and an inconsistency that breaks a domain rule (a uniqueness that
+  normalisation gets around) are never a default, a skipped finding or an open question. Reviewers tag them
+  `merge-blocker: <kind>`, and **only the tag blocks**. A text net also finds untagged look-alikes; it never blocks,
+  it only lists them (in a marathon: *Possible merge blockers – please check* in the pull request).
+- **`/feature` grills input and errors** (accepted values, limits, normalisation, error behaviour per command), and
+  the conventions template has a matching *Input and errors* section, including the time zone of "today".
+- **Marathon run (experimental, see below).** `/marathon` makes the main session the orchestrator of an unattended
+  run in both harnesses: it plans and claims story after story, hands each to a `story-worker`, runs the reviews,
+  merges accepted stories into `marathon/<date>`, verifies there and ends with one pull request to the default branch
+  (a draft after a red verify) listing the escalations, open questions, defaults to confirm and the stories' metrics.
+  You merge. `marathon-plan.ts` plans the next story; `marathon-state.ts` is the only writer of the run's state.
+
+### Marathon is experimental
+
+- **Serial only.** One worker at a time; `--n` other than 1 is refused.
+- **The merge-blocker rules have not been through a real run yet** – only the test suite has exercised them.
+- **An unattended run needs narrowly scoped permissions.** Set them before you leave a run alone – see
+  [README → Permissions for an unattended run](https://github.com/hemi1986/kataster/blob/main/README.md#permissions-for-an-unattended-run). Pattern rules and the
+  Kataster hooks are guard rails, not a sandbox.
+
+How a run protects itself:
+
+- **Stops** when nothing is left to plan, a limit (stories, failures in a row) or the optional token/cost budget is
+  reached, after the foundation tasks when a different story is next (`--no-gate-foundation` turns that off), or at
+  once on a red verify of the integration branch. `/marathon resume` goes on with a run that was cut off, also in the
+  other harness.
+- **One session at a time.** A lease records the orchestrator and each story's worker; a replaced session is refused
+  by the scripts and blocked on every tool call by `marathon-guard.ts`. Scheduling work for later is blocked while a
+  run runs. A worker's report is kept, so a resumed run reads it instead of starting another pass.
+- **Merge gate.** `result … merged` is checked against git and the last verify run, and refuses a missing acceptance
+  (below), a stale repository map and an open tagged merge blocker (`merge-check` refuses it before `git merge`). A
+  merge blocker gets one fix pass and the same reviewer again; still there, the story is escalated.
+
+### Behaviour changes – check when you upgrade
+
+- **OpenCode automations are off by default.** `.opencode/opencode.jsonc` ships `"automations": false`, and
+  `upgrade` adds it where none of your OpenCode configs sets the key. An automation runs later, outside the session's
+  permissions and the Kataster hooks; in a marathon test run an agent whose shell commands were denied used
+  `automation.create` to get around them.
+  **Migration:** if you use automations, set `"automations": true` – before or after the upgrade; your value is kept.
+- **A marathon merges no `domain`, `tech-task` or `spike` story without an accepting `acceptance-tester` review.**
+  Only `chore` and `task` take the fast lane. This is a gate of the marathon run; the manual `/implement` has no new
+  gate (the acceptance tester's verdict already is the acceptance there).
+  **Migration:** none. If a story should skip the acceptance, it has to be a real `chore` or `task`.
+- **The reviewers are stricter, in the manual mode too.** A merge blocker is a `blocker` for `code-reviewer` and
+  `not accepted` for `acceptance-tester`, even where no rule of the story names it, and `/implement` never skips it.
+  **Migration:** none; expect findings (for example a 500 on a malformed body) that used to be remarks.
+- **New story field `feature: <slug>`.** `/feature` writes it next to the `feature:<slug>` label; the metrics report
+  uses it. The linter now **errors** on more than one `feature:` label and on a field that does not match the label,
+  and warns about a label without the field.
+  **Migration:** run `npx kataster lint-story`; add `feature: <slug>` to stories that have the label, and keep one
+  feature label per story.
+- **Detail files instead of heredocs.** The new skills pass JSON to the scripts as files under `.kataster/details/`
+  (git-ignored), because Claude Code refuses a heredoc in `dontAsk` mode.
+  **Migration:** none from 0.6.3, whose skills used no heredocs. Skills or scripts of your own that call
+  `worker.ts` or `marathon-state.ts` should pass `--details <file>`.
+- **OpenCode now mirrors Claude Code's allow list – without loosening yours.** The workflow scripts,
+  `git status/diff/log` and `gh issue/label` become `shell` allow rules in `opencode.jsonc`. An upgrade never makes
+  your permissions weaker:
+  - **Your `deny` always wins**, `shell * deny` included.
+  - **Your `ask` yields only to Kataster's own scripts** (`node .claude/skills/*/scripts/*`). For `gh issue`,
+    `gh label`, `git` and every other command it stays.
+  - OpenCode applies the **last** matching rule, so a Kataster rule that would override one of yours is added **in
+    front of it**. OpenCode also reads `opencode.json[c]` at the root and in parent directories and the older
+    `permission` and `tools` keys *before* the list in `.opencode/opencode.jsonc`; a rule that would override one of
+    those is **not added**. The same when such a file cannot be read.
+  - `upgrade` lists what it held back, and `kataster doctor` warns for each of your rules that takes a Kataster rule
+    out of work and says what follows (for example *the backlog sync will ask for approval*). It also warns when one
+    of your rules stands *before* a Kataster rule that overrides it.
+  - Your global OpenCode config (`~/.config/opencode`) is not part of the project and is not considered here:
+    OpenCode applies the project's rules after it.
+
+  Claude Code gains allow entries for the `metrics` and `marathon` scripts; there your `deny` and `ask` win anyway,
+  and they stay as you wrote them.
+  **Migration:** nothing is required. Run `npx kataster doctor`; to let a command run that one of your rules holds,
+  move the Kataster rule behind yours (or change yours) – the upgrade keeps the order you choose.
+- **More hooks, and metrics files to commit.** `.claude/settings.json` and the OpenCode plugin run `metrics.ts`
+  (session start and end, shell calls, permission prompts – it adds the caller's session id to the scripts' marker
+  commands) and `marathon-guard.ts` (inactive without a run). The workflow skills write
+  `docs/stories/metrics/*.json`; commit them. `/implement` and `verify.ts` ignore uncommitted ones.
+  Both harnesses check permissions against the rewritten command, so a command that a `deny` or `ask` rule of yours
+  matches only as written is **not** rewritten – your rule applies. (If you then approve such an `ask`, that call
+  runs without the caller's id: no marathon lease check and no token attribution for it.)
+- **Project files are not rewritten.** `docs/workflow.md`, `docs/engineering/conventions.md` and the story README are
+  yours. **Migration (optional):** compare them with `templates/` for the new *Input and errors* section and the
+  worker/marathon flow.
+
+### Fixes
+
+- **`init` and `upgrade` no longer delete your Claude Code permissions.** A `.claude/settings.json` that is not plain
+  JSON – a comment, a trailing comma, a byte order mark – was treated as empty and **overwritten**, with your `deny`,
+  `ask`, `allow` and hooks. It is now left untouched; the run says so, `doctor` fails until the file is plain JSON,
+  and the next upgrade wires the hooks in. This affects 0.6.3 and earlier: **if you installed or upgraded over such a
+  file, compare `.claude/settings.json` with your git history.**
+- **The Stop gate no longer loses the first changed file.** `stop-gate.ts`, `characterize.ts` and `affected.ts`
   trimmed the output of `git status --porcelain` before cutting off the status columns, which shifted the path of an
   unstaged file: the Stop gate skipped the first modified file (and ran nothing when it was the only one), and
-  `affected.ts` lost every unstaged modification. All three now use `changedPaths()` in `lib/git.ts`
-  (`--porcelain -z`).
-- **`verify.ts` ignores collected metrics when it records `dirty`.** Uncommitted files under `docs/stories/metrics/`
-  no longer mark the verified code as changed, in line with the clean-tree check of `/implement`.
-- **OpenCode mirrors Claude Code's permissions.** Every entry of Claude Code's allow list becomes a `shell` rule in
-  `.opencode/opencode.jsonc` with the same pattern: the workflow scripts, `git status/diff/log`, `gh issue/label`.
-  A project that puts `shell` behind `ask` is no longer prompted for them. On upgrade the installer appends the
-  missing rules after the project's own, since OpenCode applies the last matching rule, and recognises a rule
-  regardless of key order. A `permissions` value that is not a rule list is left alone.
+  `affected.ts` lost every unstaged modification. All three now read `git status --porcelain -z` through
+  `changedPaths()` in `lib/git.ts`.
+- **`upgrade` keeps your comments in `opencode.jsonc`.** It parsed and re-serialised the file, so every comment and
+  your formatting were lost. It now inserts only what is missing and leaves everything else byte for byte. Comments an
+  earlier upgrade removed are not restored – take them from git history.
+- **No npm warning about the `bin` path** when publishing.
 
 ## 0.6.3 – 2026-11-22
 

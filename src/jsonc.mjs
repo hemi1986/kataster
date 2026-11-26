@@ -114,7 +114,7 @@ function indentUnit(text) {
 }
 
 /** One-line form with spaces after `,` and `:`, the way a hand-written `{ "action": "shell", … }` looks. */
-function inline(value) {
+export function inline(value) {
   if (Array.isArray(value)) return `[${value.map(inline).join(", ")}]`;
   if (value && typeof value === "object") {
     const members = Object.entries(value).map(([k, v]) => `${JSON.stringify(k)}: ${inline(v)}`);
@@ -178,6 +178,42 @@ export function addProperty(text, path, key, value) {
   if (node?.type !== "object" || node.children.some((p) => p.key === key)) return text;
   const unit = indentUnit(text);
   return insertLast(text, node, [(indent) => `${JSON.stringify(key)}: ${render(value, indent, unit)}`], unit);
+}
+
+/**
+ * Inserts `items` in front of the entry at `index` of the array at `path` (past the end: appends). The comments in
+ * front of that entry stay with it.
+ */
+export function insertItems(text, path, index, items) {
+  if (items.length === 0) return text;
+  const node = findNode(parseTree(text), path);
+  if (node?.type !== "array") return text;
+  if (index >= node.children.length) return appendItems(text, path, items);
+  const target = node.children[index];
+  const before = text.slice(node.offset, target.offset);
+  if (!before.includes("\n")) {
+    return `${text.slice(0, target.offset)}${items.map(inline).join(", ")}, ${text.slice(target.offset)}`;
+  }
+  // Behind the previous entry's comma (or the opening bracket) and a comment on that line.
+  let anchor = node.offset + 1;
+  if (index > 0) {
+    anchor = node.children[index - 1].end;
+    while (/[ \t]/.test(text[anchor])) anchor += 1;
+    if (text[anchor] === ",") anchor += 1;
+  }
+  const newline = text.indexOf("\n", anchor);
+  if (newline !== -1 && newline < target.offset && /^\s*(\/\/.*)?$/.test(text.slice(anchor, newline))) anchor = newline;
+  const indent = indentAt(text, target.offset);
+  const oneLine = "}]".includes(text[target.end - 1]) && !text.slice(target.offset, target.end).includes("\n");
+  const unit = indentUnit(text);
+  const body = items.map((item) => `\n${indent}${render(item, oneLine ? null : indent, unit)},`).join("");
+  return `${text.slice(0, anchor)}${body}${text.slice(anchor)}`;
+}
+
+/** Replaces the value at `path` with `source`, a text that is already JSON. */
+export function replaceValue(text, path, source) {
+  const node = findNode(parseTree(text), path);
+  return node ? `${text.slice(0, node.offset)}${source}${text.slice(node.end)}` : text;
 }
 
 /** Appends `items` to the array at `path`. Returns the text unchanged when there is nothing to add or no array. */
