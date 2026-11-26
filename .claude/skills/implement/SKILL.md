@@ -394,8 +394,10 @@ field, a wrong type), and an inconsistency that breaks a domain rule (a uniquene
 normalisation get around) are fixed in this pass, with a test that pins the fix – never put into `decisions`, never
 `skipped`. The fix is the conservative one: reject rather than accept, the existing `invalid` path, compare the
 normalised copy. Only when the fix itself needs a decision the story does not own is the pass `blocked`, with the
-blocker named in the reason. `worker.ts report` refuses a decision or a skipped finding that names one
-(`lib/merge-blockers.ts`); reviewers tag them `merge-blocker: <kind>`, and the orchestrator merges none.
+blocker named in the reason. Reviewers tag them `merge-blocker: <kind>`, and only a tag blocks: `worker.ts report`
+refuses a decision or a skipped finding that carries one, and the orchestrator merges none. A decision or skipped
+finding that merely reads like one is a `⚠` warning (`lib/merge-blockers.ts`) – look again: if it is a merge
+blocker, fix it; otherwise leave it, the run's summary lists it for the user to check.
 
 The repository map (`repo-map.ts`, the advisory step in `verify.ts`) and its block in `AGENTS.md` are the
 orchestrator's: a stale map is not yours to regenerate.
@@ -435,7 +437,7 @@ left out. It refuses a result the facts contradict (exit 1): `ready-for-review` 
 clean tree, a green verify on the branch head, nothing that would stop `done` after the merge (a scenario without
 its test, an unticked checklist item) and no open question or finding; `returned-to-review` needs the story
 in `review` and its open question; `blocked` needs only its reason. `decisions` never block. Fix what it names, or
-report `blocked`. A decision or a skipped finding that names a merge blocker is refused as well – fix it.
+report `blocked`. A decision or a skipped finding tagged `merge-blocker: <kind>` is refused as well – fix it.
 
 In a marathon run the script also keeps the report for the run (`.claude/state/marathon-reports/`), so an
 orchestrator that was cut off reads it instead of starting another pass – and it refuses a worker the run has

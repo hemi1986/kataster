@@ -18,7 +18,7 @@ import * as d from "./discovery.ts";
 import * as e from "./engineering.ts";
 import { changedPaths, gitRaw, isMetricsPath } from "./git.ts";
 import { type KeptReport, type Lease, LEASE_FILE, readLease, reportFile, REPORTS_DIR } from "./lease.ts";
-import { blockerHits, describeHit } from "./merge-blockers.ts";
+import { describeHit, suspectHits, taggedHits } from "./merge-blockers.ts";
 import type { Entry, MetricsFile, ReviewRecord, ReviewVerdict } from "./metrics.ts";
 import { REVIEW_VERDICTS, totalTokens } from "./metrics.ts";
 import type { WorkerFacts } from "./worker.ts";
@@ -473,8 +473,9 @@ export function mergeErrors(state: e.MarathonState, id: string, claim: e.Maratho
 
 /**
  * Merge blockers (`lib/merge-blockers.ts`) are never merged: not open in a reviewer's last review, and not in the
- * merge's details disguised as a decision or an open question. Either way the way out is a fix pass and the
- * reviewer again – and when the blocker survives that, the escalation.
+ * merge's details as a decision or an open question carrying the `merge-blocker: <kind>` tag. Either way the way out
+ * is a fix pass and the reviewer again – and when the blocker survives that, the escalation. Only tags count here;
+ * what merely looks like a merge blocker is `mergeSuspects`, shown and never refused.
  */
 export function mergeBlockerErrors(id: string, claim: e.MarathonClaim, details?: Details): string[] {
   const errs: string[] = [];
@@ -489,7 +490,7 @@ export function mergeBlockerErrors(id: string, claim: e.MarathonClaim, details?:
     }
   }
   if (details) {
-    for (const hit of blockerHits({ decisions: details.decisions, openQuestions: details.openQuestions })) {
+    for (const hit of taggedHits({ decisions: details.decisions, openQuestions: details.openQuestions })) {
       errs.push(
         `${describeHit(hit)} – a merge blocker is never merged as a decision or an open question: a fix pass with it ` +
           `(claim ${id} --continue), then the reviewer again; still open after that → escalate`,
@@ -497,6 +498,22 @@ export function mergeBlockerErrors(id: string, claim: e.MarathonClaim, details?:
     }
   }
   return errs;
+}
+
+/**
+ * What looks like a merge blocker without the tag: untagged findings the reviewers' files hold (recorded with each
+ * review) and decisions, open questions and notes the text net recognises. Never refuses – the user checks them.
+ */
+export function mergeSuspects(reviews: readonly e.MarathonReview[] | undefined, details?: Partial<Details>): string[] {
+  const latest = new Map<string, e.MarathonReview>();
+  for (const r of reviews ?? []) latest.set(r.agent, r);
+  const fromReviews = [...latest.values()].flatMap((r) => (r.possible ?? []).map((p) => `${r.agent} (${p.kind}): ${p.text}`));
+  const fromDetails = suspectHits({
+    decisions: details?.decisions,
+    openQuestions: details?.openQuestions,
+    notes: (details?.notes ?? []).map((note) => ({ note })),
+  }).map(describeHit);
+  return [...fromReviews, ...fromDetails];
 }
 
 /** The story is in the integration branch and `done` there. Ends the claim and the series of failures. */
@@ -557,8 +574,10 @@ export interface ReviewInput {
   major: number;
   minor: number;
   question: number;
-  /** Findings of the merge-blocker kinds (`lib/merge-blockers.ts`), whatever severity the reviewer gave them. */
+  /** Findings tagged `merge-blocker: <kind>` in the review file (`lib/merge-blockers.ts`). */
   mergeBlocker: number;
+  /** Findings that look like merge blockers but carry no tag – shown for a look, never blocking. */
+  possible?: e.PossibleMergeBlocker[];
 }
 
 const blocks = (r: e.MarathonReview): boolean => (r.mergeBlocker ?? 0) > 0;
@@ -788,6 +807,15 @@ export function renderSummary(state: e.MarathonState, titles: Map<string, string
   if (!questions.length) out.push("None.", "");
   else {
     for (const { story, q } of questions) out.push(`- **${story}** (${q.kind}): ${q.question}`);
+    out.push("");
+  }
+
+  // What looks like a merge blocker without the tag – merged all the same, for the user to check.
+  const suspects = merged.flatMap(([id, r]) => mergeSuspects(r.reviews, r).map((text) => ({ story: id, text })));
+  if (suspects.length) {
+    out.push("## Possible merge blockers – please check", "");
+    out.push("Untagged findings, decisions or questions that read like a security, data-protection, 5xx or domain-rule problem. Nothing blocked them – only a `merge-blocker: <kind>` tag blocks.", "");
+    for (const { story, text } of suspects) out.push(`- **${story}**: ${text}`);
     out.push("");
   }
 

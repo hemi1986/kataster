@@ -4,10 +4,10 @@
  * input, and an inconsistency that breaks a domain rule (a uniqueness that normalisation gets around). They block the
  * merge: a fix pass, the reviewer again, and when the blocker is still there, the story is escalated.
  *
- * Two ways in, both read here:
- *   - a reviewer tags the finding in its review file: `merge-blocker: <kind>` (the Area column);
- *   - the text of a decision, an open question or a skipped finding names one of them – the net under the rule, for
- *     a worker or an orchestrator that files a blocker as something else.
+ * Only the explicit tag blocks: `merge-blocker: <kind>`, written by a reviewer into the finding's row of its review
+ * file. The text net below never blocks – it finds what *looks* like a merge blocker without the tag (a finding a
+ * reviewer forgot to tag, a decision or an open question that may be one) and turns it into a warning and the
+ * summary's "Possible merge blockers – please check" section for the user.
  *
  * Pure and dependency-free: the worker report (`lib/worker.ts`), the review step and the merge gate
  * (`lib/marathon.ts`) share it.
@@ -62,28 +62,47 @@ const CHECKS: [MergeBlockerKind, (text: string) => boolean][] = [
 
 const TAG = /\bmerge[- ]blocker\s*:\s*([a-z-]+)/gi;
 
-/** The kind a text names, or null. A tag (`merge-blocker: privacy`) wins over the net. */
-export function mergeBlockerKind(text: string): MergeBlockerKind | null {
+const isKind = (k: string): k is MergeBlockerKind => (MERGE_BLOCKER_KINDS as readonly string[]).includes(k);
+
+/** The kind a text tags (`merge-blocker: privacy`), or null. Only a tag blocks. */
+export function taggedKind(text: string): MergeBlockerKind | null {
   for (const m of text.matchAll(TAG)) {
     const kind = m[1].toLowerCase();
-    if ((MERGE_BLOCKER_KINDS as readonly string[]).includes(kind)) return kind as MergeBlockerKind;
+    if (isKind(kind)) return kind;
   }
+  return null;
+}
+
+/** The kind the text net recognises in an untagged text, or null. Never blocks – it asks for a look. */
+export function suspectedKind(text: string): MergeBlockerKind | null {
+  if (taggedKind(text)) return null;
   for (const [kind, check] of CHECKS) if (check(text)) return kind;
   return null;
 }
 
 /** How many findings a review file tags as merge blockers (`merge-blocker: <kind>`, one per table row or line). */
 export function countTagged(reviewText: string): number {
-  let n = 0;
+  return reviewText.split("\n").filter((line) => taggedKind(line)).length;
+}
+
+/** Severity and recommendation cells that make a table row a finding (code review, acceptance edge cases). */
+const FINDING_CELL = /^(?:blocker|major|minor|question|fix now)\b/i;
+
+/**
+ * Findings of a review file that look like merge blockers but carry no tag: table rows with a severity or a
+ * "fix now / question" cell. Rows of other tables (scenarios, definition of done) are no findings.
+ */
+export function untaggedFindings(reviewText: string): { kind: MergeBlockerKind; text: string }[] {
+  const out: { kind: MergeBlockerKind; text: string }[] = [];
   for (const line of reviewText.split("\n")) {
-    for (const m of line.matchAll(TAG)) {
-      if ((MERGE_BLOCKER_KINDS as readonly string[]).includes(m[1].toLowerCase())) {
-        n += 1;
-        break;
-      }
-    }
+    const row = line.trim();
+    if (!row.startsWith("|") || /^\|[\s:|-]+\|$/.test(row)) continue;
+    const cells = row.split("|").map((c) => c.trim()).filter(Boolean);
+    if (!cells.some((c) => FINDING_CELL.test(c))) continue;
+    const kind = suspectedKind(row);
+    if (kind) out.push({ kind, text: cells.join(" · ") });
   }
-  return n;
+  return out;
 }
 
 export interface BlockerHit {
@@ -93,17 +112,23 @@ export interface BlockerHit {
   text: string;
 }
 
-/** The decisions and open questions (and anything else with text) that are merge blockers in disguise. */
-export function blockerHits(lists: Record<string, readonly object[] | undefined>): BlockerHit[] {
-  const hits: BlockerHit[] = [];
+function hits(lists: Record<string, readonly object[] | undefined>, kindOf: (text: string) => MergeBlockerKind | null): BlockerHit[] {
+  const out: BlockerHit[] = [];
   for (const [name, list] of Object.entries(lists)) {
     (list ?? []).forEach((item, i) => {
       const text = Object.values(item as Record<string, unknown>).filter((v): v is string => typeof v === "string").join(" – ");
-      const kind = mergeBlockerKind(text);
-      if (kind) hits.push({ where: `${name}[${i}]`, kind, text });
+      const kind = kindOf(text);
+      if (kind) out.push({ where: `${name}[${i}]`, kind, text });
     });
   }
-  return hits;
+  return out;
 }
 
-export const describeHit = (h: BlockerHit): string => `${h.where} (${h.kind}): ${h.text.length > 120 ? `${h.text.slice(0, 117)}…` : h.text}`;
+/** Entries that carry a merge-blocker tag – these block. */
+export const taggedHits = (lists: Record<string, readonly object[] | undefined>): BlockerHit[] => hits(lists, taggedKind);
+
+/** Untagged entries the net recognises – these are shown for a look, never blocking. */
+export const suspectHits = (lists: Record<string, readonly object[] | undefined>): BlockerHit[] => hits(lists, suspectedKind);
+
+const short = (text: string): string => (text.length > 120 ? `${text.slice(0, 117)}…` : text);
+export const describeHit = (h: BlockerHit): string => `${h.where} (${h.kind}): ${short(h.text)}`;
