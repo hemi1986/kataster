@@ -10,12 +10,14 @@
  * Read side and planning: `readMarathonState()` and `planWave()` in engineering.ts.
  * Harness-neutral: Claude Code and OpenCode run the same script against the same file.
  */
-import { closeSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import * as d from "./discovery.ts";
 import * as e from "./engineering.ts";
 import { changedPaths, gitRaw, isMetricsPath } from "./git.ts";
+import { type KeptReport, type Lease, LEASE_FILE, readLease, reportFile, REPORTS_DIR } from "./lease.ts";
 import type { Entry, MetricsFile, ReviewRecord, ReviewVerdict } from "./metrics.ts";
 import { REVIEW_VERDICTS, totalTokens } from "./metrics.ts";
 import type { WorkerFacts } from "./worker.ts";
@@ -30,8 +32,17 @@ export const MAX_NOT_ACCEPTED = 2;
 export const MAX_FAILED_PASSES = 2;
 /** Foundation tasks – what the foundation gate waits for. */
 export const FOUNDATION_TYPE = "tech-task";
-/** Paths an orchestrator writes after the merge; they do not make a green verify stale. */
-export const isBookkeepingPath = (path: string): boolean => path.startsWith("docs/") || path === "CONTEXT.md";
+/**
+ * Paths an orchestrator writes after the merge; they do not make a green verify stale. `AGENTS.md` is in it for the
+ * generated repository block that `repo-map.ts` rewrites with the map.
+ */
+export const isBookkeepingPath = (path: string): boolean => path.startsWith("docs/") || path === "CONTEXT.md" || path === "AGENTS.md";
+/**
+ * Story types whose merge needs an accepting `acceptance-tester` review – the lanes of `/implement`: domain stories
+ * and tech tasks take the full lane, a spike's checklist evidence is checked too. Only `chore` and `task` are fast.
+ */
+export const ACCEPTANCE_TYPES = new Set(["domain", "story", "tech-task", "spike"]);
+const ACCEPTING = new Set(["accepted", "accepted-with-remarks"]);
 
 /** The command failed for a reason the caller can fix (exit 1). */
 export class MarathonError extends Error {}
@@ -145,6 +156,30 @@ export function withStateLock<T>(path: string, fn: () => T, opts: LockOptions = 
   } finally {
     release();
   }
+}
+
+/** Atomic JSON write: a temp file in the same directory, then a rename. */
+function writeJson(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  renameSync(tmp, path);
+}
+
+/** Reads, changes and writes the lease under its own lock (always taken after the state's lock, never before). */
+export function updateLease(change: (lease: Lease | null) => Lease, path = LEASE_FILE): Lease {
+  return withStateLock(path, () => {
+    const next = change(readLease(path));
+    writeJson(path, next);
+    return next;
+  });
+}
+
+/** Keeps a worker's report for the run: a resumed orchestrator reads it instead of starting another pass. */
+export function keepReport(report: KeptReport, dir = REPORTS_DIR): string {
+  const file = reportFile(report.story, dir);
+  writeJson(file, report);
+  return file;
 }
 
 /** Validates and writes the state: a temp file in the same directory, then a rename – never a half-written file. */
@@ -334,22 +369,36 @@ export function applyRelease(state: e.MarathonState, id: string): e.MarathonStat
 
 export interface Details {
   openQuestions: e.MarathonQuestion[];
+  decisions: e.MarathonDecision[];
   notes: string[];
 }
 
+const DETAIL_KEYS = ["openQuestions", "decisions", "notes"];
+
 /**
- * What goes into the run's summary besides the reason: `{ "openQuestions": [{ question, kind }], "notes": ["…"] }`.
- * A worker report is accepted as it is – its `openQuestions` are taken, the rest is in git.
+ * What goes into the run's summary besides the reason:
+ * `{ "openQuestions": [{ question, kind }], "decisions": [{ question, decision, why }], "notes": ["…"] }`.
+ * A worker report is accepted as it is – its `openQuestions` and `decisions` are taken, the rest is in git.
  */
 export function parseDetails(raw: unknown): { details: Details; errors: string[] } {
-  const details: Details = { openQuestions: [], notes: [] };
+  const details: Details = { openQuestions: [], decisions: [], notes: [] };
   const errors: string[] = [];
   if (raw === undefined || raw === null) return { details, errors };
   if (typeof raw !== "object" || Array.isArray(raw)) return { details, errors: ["the details must be a JSON object"] };
   const obj = raw as Record<string, unknown>;
   const isReport = obj.report === "implement-worker";
-  if (!isReport) for (const key of Object.keys(obj)) if (key !== "openQuestions" && key !== "notes") errors.push(`unknown key '${key}' (allowed: openQuestions, notes – or a whole worker report)`);
+  if (!isReport) for (const key of Object.keys(obj)) if (!DETAIL_KEYS.includes(key)) errors.push(`unknown key '${key}' (allowed: ${DETAIL_KEYS.join(", ")} – or a whole worker report)`);
   const str = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0;
+  if (obj.decisions !== undefined) {
+    if (!Array.isArray(obj.decisions)) errors.push("decisions must be a list");
+    else {
+      obj.decisions.forEach((x, i) => {
+        const item = x as Record<string, unknown> | null;
+        if (!item || typeof item !== "object" || !str(item.question) || !str(item.decision) || !str(item.why)) errors.push(`decisions[${i}] needs question, decision and why`);
+        else details.decisions.push({ question: item.question.trim(), decision: item.decision.trim(), why: item.why.trim() });
+      });
+    }
+  }
   if (obj.openQuestions !== undefined) {
     if (!Array.isArray(obj.openQuestions)) errors.push("openQuestions must be a list");
     else {
@@ -367,10 +416,12 @@ export function parseDetails(raw: unknown): { details: Details; errors: string[]
   return { details, errors };
 }
 
-const extras = (claim: e.MarathonClaim, details: Details): Pick<e.MarathonResult, "type" | "reviews" | "openQuestions" | "notes"> => ({
+const extras = (claim: e.MarathonClaim, details: Details): Pick<e.MarathonResult, "resumed" | "type" | "reviews" | "openQuestions" | "decisions" | "notes"> => ({
+  ...(claim.resumed ? { resumed: claim.resumed } : {}),
   ...(claim.type ? { type: claim.type } : {}),
   ...(claim.reviews?.length ? { reviews: claim.reviews } : {}),
   ...(details.openQuestions.length ? { openQuestions: details.openQuestions } : {}),
+  ...(details.decisions?.length ? { decisions: details.decisions } : {}),
   ...(details.notes.length ? { notes: details.notes } : {}),
 });
 
@@ -389,6 +440,8 @@ export interface MergeFacts {
   verifyCoversMerge: boolean;
   /** Paths changed since `verify.commit` that are not bookkeeping (docs, glossary). */
   changedSinceVerify: string[];
+  /** The checked-in repository map no longer matches the repository; null when the project has no map. */
+  repoMapStale?: boolean | null;
 }
 
 /** Why the story is not merged as far as git and the last verify run can tell; empty means `merged` may be recorded. */
@@ -405,6 +458,13 @@ export function mergeErrors(state: e.MarathonState, id: string, claim: e.Maratho
     errs.push(`code changed after the green verify (${f.changedSinceVerify.slice(0, 5).join(", ")}${f.changedSinceVerify.length > 5 ? ", …" : ""}) – run verify.ts again`);
   }
   if (f.storyStatus !== "done") errs.push(`the story is '${f.storyStatus ?? "?"}', not 'done' – after the merge: story-status.ts ${id} done`);
+  if (ACCEPTANCE_TYPES.has(claim.type ?? "domain") && !(claim.reviews ?? []).some((r) => r.agent === "acceptance-tester" && ACCEPTING.has(r.verdict))) {
+    errs.push(
+      `a ${claim.type ?? "domain"} story is merged only after the acceptance-tester accepted it – no accepting review is recorded. ` +
+        "The fast lane is for chore and task; run the reviews (step 4) and record them with `marathon-state.ts review`",
+    );
+  }
+  if (f.repoMapStale) errs.push("the repository map is stale after the merge – run `node .claude/skills/adopt/scripts/repo-map.ts` and commit it with the bookkeeping");
   if (f.dirty.length) errs.push(`uncommitted changes: ${f.dirty.slice(0, 5).join(", ")}${f.dirty.length > 5 ? ", …" : ""} – commit them as '${id}: done'`);
   return errs;
 }
@@ -521,6 +581,11 @@ export interface ClaimFacts {
   branchExists: boolean;
   /** The story branch is in the integration branch and the story is `in-progress` or `done` there. */
   merged: boolean;
+  /**
+   * The worker of the current pass handed in its report, and the branch head is still the one it reported on: the
+   * pass ended – only the orchestrator that should have read the report was cut off.
+   */
+  reported?: boolean;
 }
 
 /**
@@ -528,15 +593,22 @@ export interface ClaimFacts {
  *   keep     – the orchestrator says its worker is still running
  *   release  – no story branch: nothing was built, the story goes back into the plan
  *   merge    – the branch is merged already, or the reviews accepted it: go on with the merge step, no worker pass
- *   continue – the branch exists: a worker continues on it, and the pass counts as an attempt
+ *   report   – the pass ended with a report the orchestrator never read: read it (step 3), no worker pass
+ *   continue – the branch exists: a worker continues on it; the pass counts as a pass, not as a failure
  */
-export type OrphanAction = "keep" | "release" | "merge" | "continue";
+export type OrphanAction = "keep" | "release" | "merge" | "report" | "continue";
 
 export function orphanAction(claim: e.MarathonClaim, f: ClaimFacts, workerRunning: boolean): OrphanAction {
   if (workerRunning) return "keep";
   if (!f.branchExists) return "release";
   if (f.merged || claim.phase === "merge") return "merge";
+  if (f.reported && (claim.phase ?? "worker") === "worker") return "report";
   return "continue";
+}
+
+/** Whether the kept report is the report of the claim's current pass, made on the branch head as it is now. */
+export function reportCovers(kept: KeptReport | null, run: string, claim: e.MarathonClaim, head: string | null): boolean {
+  return !!kept && kept.run === run && kept.pass === claim.attempts && !!head && kept.head === head;
 }
 
 export function applyResume(
@@ -554,6 +626,7 @@ export function applyResume(
     if (action === "release") delete next.claims[id];
     if (action === "continue") {
       next.claims[id].attempts += 1;
+      next.claims[id].resumed = (claim.resumed ?? 0) + 1;
       next.claims[id].phase = "worker";
       next.claims[id].passStart = now;
     }
@@ -610,6 +683,7 @@ export function nextStep(state: e.MarathonState, f: StopFacts): NextStep {
 const reviewLine = (reviews: e.MarathonReview[] | undefined): string =>
   (reviews ?? []).map((r) => `${r.agent}: ${r.verdict.replaceAll("-", " ")}${r.blocker + r.major + r.minor + r.question ? ` (${r.blocker}B ${r.major}M ${r.minor}m ${r.question}Q)` : ""}`).join("; ") || "–";
 const cell = (v: string): string => v.replaceAll("|", "\\|").replaceAll("\n", " ");
+const passes = (attempts: number | undefined, resumed: number | undefined): string => `${attempts ?? 0}${resumed ? ` (${resumed} after a cut-off)` : ""}`;
 
 /**
  * The run as Markdown: what was merged, what was escalated and why, the open questions, the metrics. `metrics` is
@@ -633,7 +707,7 @@ export function renderSummary(state: e.MarathonState, titles: Map<string, string
   if (!merged.length) out.push("None.", "");
   else {
     out.push("| Story | Title | Type | Passes | Reviews |", "|---|---|---|---:|---|");
-    for (const [id, r] of merged) out.push(`| ${id} | ${cell(title(id))} | ${r.type ?? "–"} | ${r.attempts} | ${cell(reviewLine(r.reviews))} |`);
+    for (const [id, r] of merged) out.push(`| ${id} | ${cell(title(id))} | ${r.type ?? "–"} | ${passes(r.attempts, r.resumed)} | ${cell(reviewLine(r.reviews))} |`);
     out.push("");
     for (const [id, r] of merged) for (const note of r.notes ?? []) out.push(`- ${id}: ${note}`);
     if (merged.some(([, r]) => r.notes?.length)) out.push("");
@@ -643,7 +717,7 @@ export function renderSummary(state: e.MarathonState, titles: Map<string, string
   if (!state.escalations.length) out.push("None.", "");
   for (const x of state.escalations) {
     out.push(`- **${x.story}${title(x.story) ? ` – ${title(x.story)}` : ""}** – ${x.reason}`);
-    out.push(`  - ${x.branch ? `branch \`${x.branch}\` (local, not merged)` : "no branch"} · ${x.attempts ?? 0} pass(es) · reviews: ${reviewLine(x.reviews)}`);
+    out.push(`  - ${x.branch ? `branch \`${x.branch}\` (local, not merged)` : "no branch"} · ${passes(x.attempts, x.resumed)} pass(es) · reviews: ${reviewLine(x.reviews)}`);
     for (const note of x.notes ?? []) out.push(`  - ${note}`);
   }
   if (state.escalations.length) out.push("");
@@ -663,6 +737,17 @@ export function renderSummary(state: e.MarathonState, titles: Map<string, string
   if (!questions.length) out.push("None.", "");
   else {
     for (const { story, q } of questions) out.push(`- **${story}** (${q.kind}): ${q.question}`);
+    out.push("");
+  }
+
+  // Technical details a worker settled with a default instead of blocking – merged, waiting for the user's nod.
+  const decided: { story: string; x: e.MarathonDecision }[] = [
+    ...Object.entries(state.results).filter(([, r]) => r.outcome === "merged").flatMap(([id, r]) => (r.decisions ?? []).map((x) => ({ story: id, x }))),
+    ...state.escalations.flatMap((s) => (s.decisions ?? []).map((x) => ({ story: s.story, x }))),
+  ];
+  if (decided.length) {
+    out.push("## Decided with a default – confirm or change", "");
+    for (const { story, x } of decided) out.push(`- **${story}**: ${x.question} → **${x.decision}** – ${x.why}`);
     out.push("");
   }
 
@@ -712,7 +797,17 @@ export function mergeFacts(state: e.MarathonState, claim: e.MarathonClaim, story
     verify: v ? { branch: v.branch, ok: v.ok, commit: v.commit, dirty: v.dirty, failed: v.steps.filter((s) => !s.ok).map((s) => s.name) } : null,
     verifyCoversMerge: covers,
     changedSinceVerify: covers ? lines(git("diff", "--name-only", v!.commit!, target)).filter((p) => !isBookkeepingPath(p)) : [],
+    repoMapStale: repoMapStale(),
   };
+}
+
+/** Whether `docs/architecture/repo-map.json` is behind the repository; null when the project keeps no map. */
+export function repoMapStale(root = d.ROOT): boolean | null {
+  if (!existsSync(join(root, "docs", "architecture", "repo-map.json"))) return null;
+  const script = join(root, ".claude", "skills", "adopt", "scripts", "repo-map.ts");
+  if (!existsSync(script)) return null;
+  const r = spawnSync(process.execPath, [script, "--check"], { cwd: root, encoding: "utf8" });
+  return r.status !== 0;
 }
 
 /** The branches of the run's stories that are not merged – their metrics are not in the integration branch. */

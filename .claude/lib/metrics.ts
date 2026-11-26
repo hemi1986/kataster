@@ -839,9 +839,12 @@ export function collectPass(endMarker: Marker, col: Collector): CollectResult {
 /**
  * Finalises runs: writes every pass entry not written yet (self-healing after a failed `end`), closes passes the
  * session left open (except gates like `merge`), and moves everything outside a pass into the `unassigned` pot.
- * Runs are picked by id, or – `stale` – every run with markers whose last activity is older than `idleMs`.
+ * Runs are picked by id, or – `stale` – every run with markers whose last activity is older than `idleMs`, or –
+ * `since` (ms) – every run with a marker at or after that time, idle or not: the end of a marathon run collects its
+ * sessions this way before the pull request, while the orchestrator's own session is still open. A later collection
+ * goes on from where this one stopped (`finalized.json`), so nothing is counted twice.
  */
-export function collectRuns(col: Collector, opts: { runs?: string[]; stale?: boolean; idleMs?: number; exclude?: string[] }): CollectResult {
+export function collectRuns(col: Collector, opts: { runs?: string[]; stale?: boolean; idleMs?: number; exclude?: string[]; since?: number }): CollectResult {
   const result: CollectResult = { written: [], warnings: [] };
   const located = locateAll(readMarkers(col.dir), col, result.warnings);
   const { passes, warnings } = buildPasses(located);
@@ -851,11 +854,13 @@ export function collectRuns(col: Collector, opts: { runs?: string[]; stale?: boo
   const exclude = new Set(opts.exclude ?? []);
   const idle = opts.idleMs ?? 30 * 60_000;
 
+  const recent = opts.since === undefined ? null : new Set(located.filter((l) => Date.parse(l.marker.ts) >= opts.since!).map((l) => l.run));
   const chosen = new Map<string, { harness: Harness; transcript?: string }>();
   for (const [run, info] of allRuns) {
     if (exclude.has(run)) continue;
     if (opts.runs && !opts.runs.includes(run)) continue;
-    if (opts.stale) {
+    if (recent && !recent.has(run)) continue;
+    if (opts.stale && !recent) {
       const last = col.adapters[info.harness]?.lastActivity(run, info) ?? null;
       if (last === null || Date.now() - last < idle) continue;
       if ((finalized[run] ?? 0) >= last) continue;

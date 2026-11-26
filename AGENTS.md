@@ -60,6 +60,14 @@ The workflow is spec-driven and mechanical, not a simulated organisation:
   stops. How a worker is started and continued differs per harness and is documented in the skill's last table
   (`Agent` + `SendMessage` / `subagent` + `sessionID`); everything else is one text for both. The quick gate
   (`stop-gate.ts`) is off while a claim is open.
+- **Lease:** one orchestrator and one worker per run (`lib/lease.ts`, `.claude/state/marathon-lease.json`). The hooks
+  append `--caller` to `worker.ts`/`marathon-state.ts`; `start-run`/`resume` and `worker.ts start` take the lease, a
+  replaced session is refused by the scripts and blocked on every tool call by `hooks/marathon-guard.ts` (wired in
+  `settings.json` and the OpenCode plugin). No heuristic watches for a second worker. `worker.ts report` keeps the
+  report (`marathon-reports/`) so `resume` reads it instead of starting another pass.
+- **Decided with a default:** a worker settles a technical detail the spec leaves open with the conservative default
+  and reports it in `decisions` (never blocking); a domain gap stays `blocked`. The rule lives in the implement
+  skill's worker mode; the PR summary lists the decisions for the user.
 - **Reviewers report, never plan:** `code-reviewer` and `acceptance-tester` create no stories. Findings are fixed in
   the story or handed back as open questions.
 - **Story metrics:** `/shape`, `/feature`, `/review-stories` and `/implement` mark phases with

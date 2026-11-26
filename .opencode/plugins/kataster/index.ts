@@ -11,7 +11,11 @@
  *   Stop           -> session hook `experimental.idle`  -> synthetic message once
  *
  * Story metrics (`metrics.ts`, the same script Claude Code runs):
- *   PreToolUse     -> `execute.before` on shell           -> a `story-metrics.ts mark` call gets the session id
+ *   PreToolUse     -> `execute.before` on shell           -> a `story-metrics.ts mark` call gets the session id,
+ *                                                            `worker.ts`/`marathon-state.ts` calls get `--caller`
+ *
+ * Marathon guard (`marathon-guard.ts`): every tool that is not read-only, while a run is running – a session the run
+ * superseded is blocked, and so is scheduling work for later (automations).
  *   wait events    -> events `permission.asked/replied`, `form.created/replied/cancelled` -> .claude/state/metrics
  *   SessionStart   -> event `session.created`             -> finalises earlier sessions' metrics
  *
@@ -34,6 +38,9 @@ import { spawn } from "node:child_process";
 import { join } from "node:path";
 
 type HookResult = { code: number; stdout: string; stderr: string };
+
+/** Tools that only read – the marathon guard has nothing to stop there. */
+const READ_ONLY_TOOLS = new Set(["read", "glob", "grep", "list", "lsp", "skill", "todoread", "todowrite", "webfetch", "websearch"]);
 
 /** Claude tool names the hook scripts switch on. */
 const TOOL_NAME: Record<string, string> = {
@@ -238,6 +245,24 @@ export default Plugin.define({
     // ---- PreToolUse: protect-files + bash-guard ----------------------------
     await ctx.tool.hook("execute.before", async (event) => {
       const toolName = TOOL_NAME[event.tool];
+
+      // A marathon run: a superseded session can do nothing any more, and nobody schedules work for later
+      // (automations, also from a Code Mode script). Every tool that is not read-only is checked.
+      if (!READ_ONLY_TOOLS.has(event.tool)) {
+        const guard = await run(
+          "marathon-guard.ts",
+          {
+            tool_name: toolName ?? event.tool,
+            tool_input: toolName ? claudeInput(event.tool, event.input) : event.input,
+            cwd: root,
+            session_id: event.sessionID,
+            harness: "opencode",
+          },
+          15_000,
+        );
+        if (guard.code === 2) throw new Error(guard.stderr.trim() || "Blocked by marathon-guard.");
+      }
+
       if (!toolName) return;
 
       const payload = {
@@ -253,7 +278,7 @@ export default Plugin.define({
         if (res.code === 2) throw new Error(res.stderr.trim() || "Blocked by bash-guard.");
         // A metrics marker learns which session (or child session = subagent) set it.
         const command = String(payload.tool_input.command ?? "");
-        if (command.includes("story-metrics.ts")) {
+        if (command.includes("story-metrics.ts") || command.includes("worker.ts") || command.includes("marathon-state.ts")) {
           const mark = await run("metrics.ts", { ...payload, hook_event_name: "PreToolUse", harness: "opencode", agent_type: event.agent }, 15_000);
           const next = updatedCommand(mark.stdout);
           if (next) event.input = { ...(event.input as Record<string, unknown>), command: next } as never;

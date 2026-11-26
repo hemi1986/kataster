@@ -129,6 +129,26 @@ test("claude: finalising a session writes the unassigned pot once – thinking s
   assert.equal(entriesOf(dir, "ST-001.json").length, 3);
 });
 
+test("collect --since: the end of a marathon run takes its sessions, idle or not – and only once", () => {
+  const dir = repo();
+  const transcript = claudeTranscript(dir);
+  const id = ["--harness", "claude-code", "--session", "sess-1", "--transcript", transcript];
+  mark(dir, "2026-11-20T10:00:06.000Z", "ST-001", "implementierung", "start", id);
+  mark(dir, "2026-11-20T10:03:01.000Z", "ST-001", "implementierung", "end", id);
+
+  // The session counts as active (idle limit far away): the stale sweep leaves it alone.
+  assert.match(metrics(dir, ["collect", "--idle-minutes", "100000000"]).out, /Nothing to collect/);
+  // A run that started after the markers does not own this session.
+  assert.match(metrics(dir, ["collect", "--since", "2026-11-21T00:00:00Z"]).out, /Nothing to collect/);
+  const r = metrics(dir, ["collect", "--since", "2026-11-20T10:00:00Z"]);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /ST-001 unassigned: 1 entry/);
+  assert.equal(entriesOf(dir, "ST-001.json").filter((e) => e.phase === "unassigned").length, 1);
+  metrics(dir, ["collect", "--since", "2026-11-20T10:00:00Z"]);
+  assert.equal(entriesOf(dir, "ST-001.json").filter((e) => e.phase === "unassigned").length, 1, "nothing twice");
+  assert.equal(metrics(dir, ["collect", "--since", "yesterday"]).code, 2);
+});
+
 test("claude: parallel reviewers – a subagent counts towards the review phase of its own type", () => {
   const dir = repo();
   const transcript = claudeTranscript(dir);

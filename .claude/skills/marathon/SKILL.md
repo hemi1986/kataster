@@ -26,6 +26,16 @@ Its exit code steers the run: `0` done · `1` refused – the message names what
 go to *End of the run*. Run each call as its own command and read what it prints: `NEXT`, `THEN` and `STOP` lines
 are the next step, not a suggestion. `status` shows the run at any time.
 
+**JSON for `--details`** goes into a file: write it with the file tool to `.kataster/details/ST-NNN-<step>.json`
+(git-ignored) and pass `--details .kataster/details/ST-NNN-<step>.json`. A heredoc (`--details - <<'JSON'`) is
+refused by Claude Code in `dontAsk` mode – the mode an unattended run uses.
+
+**One session runs the run.** `start-run` and `resume` make this session the run's orchestrator; the hooks tell the
+scripts who calls. A session that another one replaced – an orchestrator after a resume elsewhere, a worker after a
+newer worker took its story – is refused by the scripts and blocked by the `marathon-guard` hook on every tool call.
+That is the guard against two workers on one checkout; nothing has to be watched for it. While the run runs, nobody
+schedules work for later (cron, automations): the guard blocks that too.
+
 Arguments: `resume`, or a running run in `status` → *Resume*. Otherwise → *Setup*; the options go to `start-run`
 unchanged.
 
@@ -78,10 +88,10 @@ The worker's last message is one JSON block (`"report": "implement-worker"`). It
 | no report, or a message that is not one | `result ST-NNN failed --reason "<what came back>"` – then step 1 |
 
 ```bash
-node .claude/skills/marathon/scripts/marathon-state.ts escalate ST-NNN --reason "<reason>" --details - <<'JSON'
-<the worker's report block, as it is>
-JSON
+node .claude/skills/marathon/scripts/marathon-state.ts escalate ST-NNN --reason "<reason>" --details .kataster/details/ST-NNN-escalate.json
 ```
+
+The details file holds the worker's report block as it is (without the fence).
 
 The report's open questions travel with it into the run's summary. After an escalation or a failed pass put the
 checkout back on the integration branch (`git switch <integration branch>`); the story branch stays as it is, for
@@ -121,6 +131,11 @@ follow the `NEXT` of the **last** `review` call:
   *Continuation – fix the findings in `docs/reviews/ST-NNN-*.md`*, the minors you want fixed as well, and the ones
   to skip. Read its report as in step 3. `ready-for-review` → what `THEN` said: the acceptance tester again (sub-steps
   1–3, a new round) or step 5.
+
+  **Reviewer questions never go into a worker's task.** A question (severity `question`) is not a finding to fix:
+  it travels with you into the `openQuestions` of step 5 – a worker that is handed one has to report `blocked`, and
+  the story is lost for a question that blocks nothing. For a finding that needs a technical choice, name the
+  default you want (*use the existing `invalid` path, 422*) instead of asking the worker to decide or to block.
 - **`escalate`** → the story was `not accepted` twice: `escalate` with the gaps that remain as the reason, back to
   the integration branch, step 1.
 
@@ -140,15 +155,23 @@ Every sub-step is safe to repeat; after a resume skip what is already done.
 4. From the worker's reports: every `newTerms` entry into `CONTEXT.md` (the format of the `domain-model` skill),
    every `adrProposals` entry as a `proposed` ADR (the format of the `architect` skill). You alone give out ADR
    numbers: the highest number in `docs/adr/` plus one, one after the other.
-5. `node .claude/skills/user-stories/scripts/render-backlog.ts`, `mark ST-NNN integration end`,
+5. `node .claude/skills/user-stories/scripts/render-backlog.ts`, `node .claude/skills/adopt/scripts/repo-map.ts`
+   (the merge may have added files or packages; it rewrites `docs/architecture/repo-map.*` and the generated block
+   in `AGENTS.md` – bookkeeping, like the backlog), `mark ST-NNN integration end`,
    `node .claude/skills/metrics/scripts/story-metrics.ts collect`, then commit everything as `ST-NNN: done`.
-6. Record the merge – it is checked against git and the verify run:
+6. Record the merge – it is checked against git, the verify run, the reviews (a `domain`, `tech-task` or `spike`
+   story needs an accepting `acceptance-tester`; only `chore` and `task` are fast) and the repository map. The
+   details file `.kataster/details/ST-NNN-merged.json` holds **this story's** notes, questions and decisions only –
+   never those of a story that was escalated before it:
+
+   ```json
+   { "notes": ["<ADR 0007 proposed: …>", "<new term: …>", "<minor skipped: … – why>"],
+     "openQuestions": [{ "question": "<a reviewer's question the user has to answer>", "kind": "domain|technical" }],
+     "decisions": [<the worker report's decisions, as they are>] }
+   ```
 
    ```bash
-   node .claude/skills/marathon/scripts/marathon-state.ts result ST-NNN merged --details - <<'JSON'
-   { "notes": ["<ADR 0007 proposed: …>", "<new term: …>", "<minor skipped: … – why>"],
-     "openQuestions": [{ "question": "<a reviewer's question the user has to answer>", "kind": "domain|technical" }] }
-   JSON
+   node .claude/skills/marathon/scripts/marathon-state.ts result ST-NNN merged --details .kataster/details/ST-NNN-merged.json
    ```
 
 Then step 1.
@@ -160,15 +183,18 @@ foundation gate, a red verify on the integration branch – or when the user end
 
 1. `node .claude/skills/marathon/scripts/marathon-state.ts finish` (the reason is the `STOP` reason; when the user
    ended the run: `--reason "<why>"`).
-2. `node .claude/skills/marathon/scripts/marathon-state.ts summary --out .claude/state/marathon-pr.md` – the summary,
-   the escalations with their reasons, the open questions and the metrics of every story of the run.
+2. Run the `collect --since …` command `finish` printed: it adds what the run's sessions spent outside a phase –
+   this session is still open, so the hooks have not collected it yet. Commit what it wrote as `metrics: collect`.
+   Then `node .claude/skills/marathon/scripts/marathon-state.ts summary --out .claude/state/marathon-pr.md` – the
+   summary, the escalations with their reasons, the open questions, the decisions taken with a default and the
+   metrics of every story of the run.
 3. `git push -u origin <integration branch>` and open the pull request to the default branch: title
    `Marathon <run>: <n> stories`, body = that file (`gh pr create --base <default branch> --body-file …`; as
    `--draft` when the run ended on a red verify). Without `gh`: the compare URL `git push` prints.
 4. `node .claude/skills/marathon/scripts/marathon-state.ts finish --pr <url>`. With a tracker, push the mirror once
    (the `push` of the `backlog` skill) – the tracker is synced from here only, never by a worker.
-5. Tell the user: the pull request, what was merged, what was escalated and what they have to decide. **The user
-   merges.**
+5. Tell the user: the pull request, what was merged, what was escalated, the decisions taken with a default, what
+   they have to decide, and the run's tokens and cost (the `**Run:**` line of the summary). **The user merges.**
 
 ## Resume
 
@@ -179,21 +205,24 @@ node .claude/skills/marathon/scripts/marathon-state.ts resume
 ```
 
 A claim without a running worker is **orphaned**. A worker is running only when this very session started it and
-still waits for its report – then pass `--running ST-NNN`. Per line:
+still waits for its report – then pass `--running ST-NNN`. `resume` makes this session the orchestrator: the session
+that ran the run before and the worker of every continued claim are superseded (`SUPERSEDED` lines) and can do
+nothing any more, even when they still run in the background. Per line:
 
 | Line | What you do |
 |---|---|
 | `CHECKOUT` with uncommitted paths on a story branch | a pass was cut off mid-work: commit them there as `ST-NNN: wip pass cut off` |
 | `CHECKOUT` with uncommitted paths on the integration branch | step 5 was cut off: go on with it |
-| `CONTINUE ST-NNN` | step 2 with a fresh `story-worker` and the task plus *Continuation – an earlier pass was cut off*; the pass is counted already |
+| `REPORT ST-NNN` | the pass ended and handed in its report, but nobody read it: read the file it names and go on with step 3 – no new pass |
+| `CONTINUE ST-NNN` | step 2 with a fresh `story-worker` and the task plus *Continuation – an earlier pass was cut off*; the pass is counted already, as a pass after a cut-off – not as a failure |
+| `SUPERSEDED …` | nothing – that session is blocked from here on |
 | `MERGE ST-NNN` | step 5 |
 | `RELEASED ST-NNN` | nothing – the story is back in the plan |
 | `NEXT` / `STOP` | step 1 / *End of the run* |
 | finished, no pull request | *End of the run* from sub-step 2 |
 
-In OpenCode a worker outlives the session that started it. When the uncommitted paths still change between two
-`git status --short` a minute apart, an earlier worker is alive: tell the user to interrupt it and stop – two
-workers on one checkout destroy each other's work.
+In OpenCode a session outlives its terminal: the background service keeps running it. You do not have to find out
+whether an earlier worker is alive – once you resumed, it is superseded and the guard blocks its next tool call.
 
 ## Starting and continuing a worker
 

@@ -19,8 +19,10 @@
  *   release ST-NNN
  *       Gives a claim back as if it had not been taken.
  *   resume [--running ST-NNN]
- *       Goes on with a run that was cut off: every claim without a running worker is orphaned – continued when its
- *       story branch exists (the pass counts), released when it does not.
+ *       Goes on with a run that was cut off: every claim without a running worker is orphaned – its report is read
+ *       when the pass handed one in, otherwise it is continued when its story branch exists (the pass counts, as a
+ *       pass after a cut-off, not as a failure), released when it does not. The calling session takes the run over:
+ *       the orchestrator before it and the worker of every continued claim are superseded (lib/lease.ts).
  *   finish [--reason <text>] [--pr <url>]
  *       Ends the run; called again with --pr once the pull request is open.
  *   status [--json]      read-only: the run, its limits and the next step
@@ -28,6 +30,9 @@
  *
  * Exit codes: 0 done · 1 refused (the message says what to fix) · 2 usage · 3 the run has to stop.
  * Harness-neutral: Claude Code and OpenCode run the same commands against the same file.
+ *
+ * `--caller <id>` is appended by the hooks (hooks/metrics.ts), never typed: a write from a session that is not the
+ * run's orchestrator is refused. Without it (a person in a terminal) nothing is checked.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
@@ -38,6 +43,7 @@ import { gitRaw } from "../../../lib/git.ts";
 import * as m from "../../../lib/marathon.ts";
 import type { ReviewVerdict } from "../../../lib/metrics.ts";
 import { appendReview, REVIEW_VERDICTS } from "../../../lib/metrics.ts";
+import { emptyLease, leaseOf, readLease, readReport, reportFile, orchestratorError, supersedeWorker, takeOrchestrator, type Lease } from "../../../lib/lease.ts";
 import { storyBranch, workerFacts } from "../../../lib/worker.ts";
 
 const SCRIPT = "node .claude/skills/marathon/scripts/marathon-state.ts";
@@ -88,7 +94,7 @@ const refuse = (message: string): never => {
 
 // Positional words (an outcome, a reviewer) are taken out before the strict parser sees the rest.
 const words: string[] = [];
-const VALUE_OPTIONS = ["--base", "--max-stories", "--max-failures", "--budget-tokens", "--budget-usd", "--verdict", "--blocker", "--major", "--minor", "--question", "--reason", "--details", "--running", "--pr", "--out"];
+const VALUE_OPTIONS = ["--base", "--max-stories", "--max-failures", "--budget-tokens", "--budget-usd", "--verdict", "--blocker", "--major", "--minor", "--question", "--reason", "--details", "--running", "--pr", "--out", "--caller"];
 const argv: string[] = [];
 for (let i = 0; i < rest.length; i += 1) {
   const arg = rest[i];
@@ -103,6 +109,8 @@ const STATE = e.MARATHON_STATE_FILE;
 // KATASTER_MARATHON_NOW pins the clock – for tests only.
 const now = (): Date => (process.env.KATASTER_MARATHON_NOW ? new Date(process.env.KATASTER_MARATHON_NOW) : new Date());
 const iso = (): string => now().toISOString();
+/** The calling session, as the hooks append it; null when a person runs the script. */
+const caller = args.values.get("--caller") || null;
 
 function storyArg(): string {
   if (args.ids.length !== 1) usage(`${command} needs exactly one story ID.`);
@@ -132,7 +140,7 @@ function amount(name: string): number | null {
 
 function readDetails(): m.Details {
   const source = args.values.get("--details");
-  if (source === undefined) return { openQuestions: [], notes: [] };
+  if (source === undefined) return { openQuestions: [], decisions: [], notes: [] };
   let raw: unknown;
   try {
     // A worker hands its report over as a fenced block – the fence is not part of the JSON.
@@ -167,17 +175,36 @@ function loaded(): e.MarathonState {
   return state;
 }
 
-/** Reads, changes and writes the state under the lock. `change` may be async: it reads facts before it decides. */
-async function update<T>(change: (state: e.MarathonState) => Promise<{ state: e.MarathonState; out: T }> | { state: e.MarathonState; out: T }): Promise<T> {
+/**
+ * Reads, changes and writes the state under the lock. `change` may be async: it reads facts before it decides.
+ * Only the run's orchestrator writes: a session another one replaced is refused, and the first session that writes
+ * to a run without an orchestrator (a run started before the lease existed) becomes it. `takeover` – `resume` – skips
+ * the check; it takes the run over itself.
+ */
+async function update<T>(
+  change: (state: e.MarathonState) => Promise<{ state: e.MarathonState; out: T }> | { state: e.MarathonState; out: T },
+  opts: { takeover?: boolean } = {},
+): Promise<T> {
   const release = m.acquireLock(STATE);
   try {
-    const { state, out } = await change(loaded());
+    const current = loaded();
+    const lease = readLease();
+    if (!opts.takeover) {
+      const refused = orchestratorError(lease, current.run, caller);
+      if (refused) throw new m.MarathonError(refused);
+    }
+    const { state, out } = await change(current);
     m.writeMarathonState(state, STATE);
+    if (caller && !opts.takeover && !leaseOf(lease, state.run).orchestrator) m.updateLease((l) => takeOrchestrator(l, state.run, caller, iso()));
     return out;
   } finally {
     release();
   }
 }
+
+/** The callers `after` superseded that `before` did not. */
+const newlySuperseded = (before: Lease | null, after: Lease): Lease["superseded"] =>
+  after.superseded.filter((s) => !(before?.run === after.run && before.superseded.some((b) => b.caller === s.caller && b.at === s.at)));
 
 const say = (label: string, text: string): void => console.log(`${label.padEnd(12)} ${text}`);
 
@@ -236,6 +263,8 @@ try {
         say("ARCHIVED", `run ${existing.run} → ${d.rel(archive)}`);
       }
       m.writeMarathonState(state, STATE);
+      // A new run, a new lease: the calling session is its orchestrator.
+      m.updateLease(() => (caller ? takeOrchestrator(null, run, caller, iso()) : emptyLease(run)));
       const l = state.limits;
       say("RUN", `${run} → ${branch} (from ${base})`);
       say(
@@ -372,21 +401,45 @@ try {
       process.exit(0);
     }
     if (!m.branchExists(state0.integrationBranch)) refuse(`The integration branch '${state0.integrationBranch}' of run ${state0.run} does not exist in this checkout – fetch it, or end the run with \`${SCRIPT} finish --reason …\`.`);
-    const actions = await update((state) => {
-      const facts = Object.fromEntries(Object.keys(state.claims).map((id) => [id, m.claimFacts(workerFacts(id, state.integrationBranch))]));
-      const applied = m.applyResume(state, facts, runningWorkers, iso());
-      return { state: applied.state, out: applied.actions };
-    });
+    const leaseBefore = readLease();
+    let leaseAfter: Lease | null = null;
+    const actions = await update(
+      (state) => {
+        const facts = Object.fromEntries(
+          Object.entries(state.claims).map(([id, claim]) => {
+            const wf = workerFacts(id, state.integrationBranch);
+            return [id, { ...m.claimFacts(wf), reported: m.reportCovers(readReport(id), state.run, claim, wf.head) }];
+          }),
+        );
+        const applied = m.applyResume(state, facts, runningWorkers, iso());
+        // This session takes the run over. A continued pass gets a fresh worker – the one before it is stopped.
+        const by = caller ?? "resume";
+        leaseAfter = m.updateLease((l) => {
+          let next = caller ? takeOrchestrator(l, state.run, caller, iso()) : leaseOf(l, state.run);
+          for (const a of applied.actions) if (a.action === "continue") next = supersedeWorker(next, state.run, a.story, by, iso());
+          return next;
+        });
+        return { state: applied.state, out: applied.actions };
+      },
+      { takeover: true },
+    );
     const state = loaded();
     say("RUN", `${state.run} → ${state.integrationBranch} (from ${state.base})`);
     const current = m.currentBranch();
     const dirty = m.dirtyPaths();
     say("CHECKOUT", `${current ?? "?"}${dirty.length ? ` – ${dirty.length} uncommitted path(s): ${dirty.slice(0, 5).join(", ")}${dirty.length > 5 ? ", …" : ""}` : ", clean"}`);
+    for (const s of leaseAfter ? newlySuperseded(leaseBefore, leaseAfter) : []) {
+      say("SUPERSEDED", `${s.role} ${s.caller}${s.story ? ` (${s.story}, pass ${s.pass})` : ""} – its tool calls are blocked from now on`);
+    }
     for (const a of actions) {
       if (a.action === "keep") say("RUNNING", `${a.story} on ${a.branch} – its worker is still at work; wait for the report`);
       if (a.action === "release") say("RELEASED", `${a.story} – orphaned claim without the branch ${a.branch}; back in the plan`);
       if (a.action === "continue") say("CONTINUE", `${a.story} on ${a.branch} – orphaned claim; start a story-worker continuation (pass ${a.attempts})`);
       if (a.action === "merge") say("MERGE", `${a.story} on ${a.branch} – accepted or merged already; go on with the merge step, skipping what is done`);
+      if (a.action === "report") {
+        const kept = readReport(a.story);
+        say("REPORT", `${a.story} on ${a.branch} – pass ${a.attempts} ended with '${kept?.result ?? "?"}', its report was never read: ${d.rel(reportFile(a.story))} – go on with step 3, no new pass`);
+      }
     }
     if (!actions.length) say("CLAIMS", "none open");
     const { facts } = await plan(state);
@@ -407,7 +460,11 @@ try {
       return { state: next, out: next };
     });
     say("FINISHED", `${out.run} – ${out.stop!.reason}`);
-    say(out.stop!.pr ? "PR" : "NEXT", out.stop!.pr ?? `push ${out.integrationBranch}, open the pull request, then \`${SCRIPT} finish --pr <url>\``);
+    if (out.stop!.pr) say("PR", out.stop!.pr);
+    else {
+      say("NEXT", `node .claude/skills/metrics/scripts/story-metrics.ts collect --since ${out.startedAt} – the run's sessions, the open ones too; commit what it writes as 'metrics: collect'`);
+      say("THEN", `${SCRIPT} summary --out .claude/state/marathon-pr.md, push ${out.integrationBranch}, open the pull request, then \`${SCRIPT} finish --pr <url>\``);
+    }
     process.exit(0);
   }
 

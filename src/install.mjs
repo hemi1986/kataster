@@ -30,6 +30,9 @@ const LEGACY_MARKERS = [
   [/<!--\s*laguardia:claude:end\s*-->/, CLAUDE_END],
 ];
 
+/** The tools a superseded session could still change something with – writing, starting agents, scheduling. */
+const MARATHON_GUARD_MATCHER = "Bash|Write|Edit|MultiEdit|NotebookEdit|Agent|Task|SendMessage|CronCreate|RemoteTrigger|ScheduleWakeup";
+
 const HOOK_EVENTS = {
   SessionStart: [
     {
@@ -40,6 +43,11 @@ const HOOK_EVENTS = {
     },
   ],
   PreToolUse: [
+    // A marathon run blocks every session it superseded, and scheduling work for later while it runs.
+    {
+      matcher: MARATHON_GUARD_MATCHER,
+      hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/marathon-guard.ts"' }],
+    },
     {
       matcher: "Write|Edit|MultiEdit",
       hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/protect-files.ts"' }],

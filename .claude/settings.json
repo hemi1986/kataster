@@ -35,6 +35,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash|Write|Edit|MultiEdit|NotebookEdit|Agent|Task|SendMessage|CronCreate|RemoteTrigger|ScheduleWakeup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/marathon-guard.ts\""
+          }
+        ]
+      },
+      {
         "matcher": "Write|Edit|MultiEdit",
         "hooks": [
           {

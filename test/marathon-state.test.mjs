@@ -28,7 +28,7 @@ const BRANCH = "marathon/2026-11-26";
 // --------------------------------------------------------------------------
 const run = (limits = {}) => newRun({ run: "2026-11-26", branch: BRANCH, base: "main", now: T0, limits });
 const claimed = (state, id = "ST-001", type = "chore", at = T0) => applyClaim(state, { id, branch: `${id.toLowerCase()}-demo`, type }, at);
-const none = { openQuestions: [], notes: [] };
+const none = { openQuestions: [], decisions: [], notes: [] };
 const facts = (over = {}) => ({ next: { id: "ST-009", type: "chore" }, planReason: null, verify: null, usage: null, ...over });
 const review = (agent, verdict, counts = {}) => ({ agent, verdict, blocker: 0, major: 0, minor: 0, question: 0, ...counts });
 
@@ -269,7 +269,11 @@ test("finish: needs a reason and no open claim; the pull request is recorded aft
 test("parseDetails: questions and notes, or a worker report as it is", () => {
   assert.deepEqual(parseDetails(undefined), { details: none, errors: [] });
   const report = { report: "implement-worker", version: 1, story: "ST-001", result: "blocked", reason: "…", openQuestions: [{ question: "Which seam?", kind: "technical" }], newTerms: [] };
-  assert.deepEqual(parseDetails(report).details, { openQuestions: [{ question: "Which seam?", kind: "technical" }], notes: [] });
+  assert.deepEqual(parseDetails(report).details, { openQuestions: [{ question: "Which seam?", kind: "technical" }], decisions: [], notes: [] });
+  const decided = { ...report, result: "ready-for-review", openQuestions: [], decisions: [{ question: "Time zone of today?", decision: "the process's local time zone", why: "no rule; conventions name days without a zone" }] };
+  assert.deepEqual(parseDetails(decided).details.decisions, decided.decisions);
+  assert.deepEqual(parseDetails({ decisions: [{ question: "q", decision: "d", why: "w" }] }).details.decisions, [{ question: "q", decision: "d", why: "w" }]);
+  assert.match(parseDetails({ decisions: [{ question: "q" }] }).errors[0], /decisions\[0\] needs question, decision and why/);
   assert.deepEqual(parseDetails(report).errors, []);
   assert.deepEqual(parseDetails({ notes: ["ADR 0007 proposed"] }).details.notes, ["ADR 0007 proposed"]);
   assert.match(parseDetails({ note: "x" }).errors[0], /unknown key 'note'/);
@@ -633,7 +637,8 @@ test("the run stops with exit 3: the story limit, a red verify on the integratio
   // finish takes the reason from the same check.
   const end = ok(ms(dir, ["finish"], { now: T2 }));
   assert.match(end.out, /FINISHED {5}2026-11-26 – the run has started 1 story \(limit 1\)/);
-  assert.match(end.out, /NEXT {9}push marathon\/2026-11-26, open the pull request/);
+  assert.match(end.out, /NEXT {9}node \.claude\/skills\/metrics\/scripts\/story-metrics\.ts collect --since 2026-11-26T12:00:00\.000Z/);
+  assert.match(end.out, /THEN {9}.* summary --out \.claude\/state\/marathon-pr\.md, push marathon\/2026-11-26, open the pull request/);
   assert.deepEqual(readState(dir).stop, { reason: "the run has started 1 story (limit 1)", at: T2, pr: null });
   assert.equal(ms(dir, ["claim", "ST-002"]).code, 1, "a finished run takes no story");
   assert.match(planner(dir).out, /STOP {9}run 2026-11-26 is finished/);
@@ -719,6 +724,11 @@ test("the foundation gate ends the run between the foundation tasks and the firs
   verified(dir);
   write(dir, storyPath("ST-001"), storyText("ST-001", "done", { type: "tech-task" }));
   git(dir, "commit", "-q", "-am", "ST-001: done");
+  // A tech task takes the full lane: no merge without the acceptance tester.
+  const unreviewed = ms(dir, ["result", "ST-001", "merged"]);
+  assert.equal(unreviewed.code, 1);
+  assert.match(unreviewed.out, /a tech-task story is merged only after the acceptance-tester accepted it/);
+  ok(ms(dir, ["review", "ST-001", "acceptance-tester", "--verdict", "accepted"]));
   ok(ms(dir, ["result", "ST-001", "merged"]));
   const gate = ms(dir, ["claim", "ST-002"]);
   assert.equal(gate.code, 3);
@@ -943,4 +953,89 @@ test("both harnesses ship the marathon: one skill, a command that only loads it,
   assert.ok(config.permissions.some((rule) => rule.action === "shell" && rule.effect === "allow" && covers(rule.resource)), "OpenCode");
   // The agents block of AGENTS.md names the run.
   assert.match(readFileSync(join(dir, "AGENTS.md"), "utf8"), /\*\*Marathon:\*\* `\/marathon`/);
+});
+
+// --------------------------------------------------------------------------
+// The lease – two sessions on one run (a closed TUI leaves OpenCode's sessions running in its service)
+// --------------------------------------------------------------------------
+const wk = (dir, args, opts) => script(dir, ["implement", "scripts", "worker.ts"], args, opts);
+function guardHook(dir, payload) {
+  const r = spawnSync(process.execPath, [join(dir, ".claude", "hooks", "marathon-guard.ts")], { cwd: dir, input: JSON.stringify(payload), encoding: "utf8" });
+  return r.status;
+}
+/** A worker's work on the branch `worker.ts start` put the checkout on: the story in progress, a commit, a green verify. */
+function build(dir, id, line = "1") {
+  write(dir, storyPath(id), storyText(id, "in-progress"));
+  write(dir, `src/${id.toLowerCase()}.ts`, `export const done = ${line};\n`);
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", `${id}: tidy up ${line}`);
+  verified(dir);
+}
+const report = (dir, id, caller, result = "ready-for-review") =>
+  wk(dir, ["report", id, "--base", BRANCH, "--result", result, "--details", "-", "--caller", caller], { input: JSON.stringify({ reason: "done" }) });
+
+test("lease: a resumed run stops the orchestrator and the worker before it – they can write nothing, not even a report", () => {
+  const dir = repo();
+  ok(ms(dir, ["start-run", "--caller", "opencode:orch-a"]));
+  ok(ms(dir, ["claim", "ST-001", "--caller", "opencode:orch-a"]));
+  // Only the orchestrator writes.
+  const foreign = ms(dir, ["claim", "ST-001", "--continue", "--caller", "opencode:orch-b"]);
+  assert.equal(foreign.code, 1);
+  assert.match(foreign.out, /opencode:orch-a is the orchestrator of run 2026-11-26/);
+
+  const w1 = ok(wk(dir, ["start", "ST-001", "--base", BRANCH, "--caller", "opencode:w1"]));
+  assert.match(w1.out, /LEASE {8}worker of ST-001, pass 1\n/);
+  build(dir, "ST-001", "1");
+
+  // The TUI is closed; orch-a and w1 live on in the service. A new session resumes the run.
+  const r = ok(ms(dir, ["resume", "--caller", "opencode:orch-b"], { now: T1 }));
+  assert.match(r.out, /SUPERSEDED {3}orchestrator opencode:orch-a – its tool calls are blocked from now on/);
+  assert.match(r.out, /SUPERSEDED {3}worker opencode:w1 \(ST-001, pass 1\) – its tool calls are blocked from now on/);
+  assert.match(r.out, /CONTINUE {5}ST-001 on st-001-demo – orphaned claim; start a story-worker continuation \(pass 2\)/);
+
+  // From here the old sessions are refused by the scripts and blocked by the hook on every tool.
+  const old = ms(dir, ["release", "ST-001", "--caller", "opencode:orch-a"]);
+  assert.equal(old.code, 1);
+  assert.match(old.out, /this session was replaced as the orchestrator of run 2026-11-26/);
+  const bash = { tool_name: "Bash", tool_input: { command: "git commit -am wip" }, harness: "opencode" };
+  assert.equal(guardHook(dir, { ...bash, session_id: "orch-a" }), 2);
+  assert.equal(guardHook(dir, { ...bash, session_id: "w1" }), 2);
+  assert.equal(guardHook(dir, { ...bash, session_id: "orch-b" }), 0);
+  const late = report(dir, "ST-001", "opencode:w1");
+  assert.equal(late.code, 1);
+  assert.match(late.out, /ST-001: no report – this worker was replaced/);
+
+  // The new worker takes the claim; its report is the one that counts, and it is kept for the run.
+  const w2 = ok(wk(dir, ["start", "ST-001", "--base", BRANCH, "--caller", "opencode:w2"]));
+  assert.match(w2.out, /LEASE {8}worker of ST-001, pass 2\n/);
+  assert.equal(guardHook(dir, { ...bash, session_id: "w2" }), 0);
+  ok(report(dir, "ST-001", "opencode:w2"));
+  const kept = JSON.parse(readFileSync(join(dir, ".claude", "state", "marathon-reports", "ST-001.json"), "utf8"));
+  assert.deepEqual([kept.run, kept.pass, kept.caller, kept.result, kept.head], ["2026-11-26", 2, "opencode:w2", "ready-for-review", git(dir, "rev-parse", "--short", "HEAD")]);
+  ok(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge", "--caller", "opencode:orch-b"]));
+});
+
+test("resume: a pass that ended with a report is read, not run again; a pass cut off mid-work counts as resumed, not failed", () => {
+  const dir = repo();
+  ok(ms(dir, ["start-run"]));
+  ok(ms(dir, ["claim", "ST-001"]));
+  ok(wk(dir, ["start", "ST-001", "--base", BRANCH]));
+  build(dir, "ST-001");
+  ok(report(dir, "ST-001", "claude-code:a7", "blocked"));
+
+  // The orchestrator was cut off before it read the report.
+  const r = ok(ms(dir, ["resume"], { now: T1 }));
+  assert.match(r.out, /REPORT {7}ST-001 on st-001-demo – pass 1 ended with 'blocked', its report was never read: \.claude\/state\/marathon-reports\/ST-001\.json – go on with step 3, no new pass/);
+  assert.doesNotMatch(r.out, /CONTINUE/);
+  assert.equal(readState(dir).claims["ST-001"].attempts, 1);
+
+  // A commit after the report: the report is stale, the pass was cut off – a continuation, counted apart.
+  build(dir, "ST-001", "2");
+  const again = ok(ms(dir, ["resume"], { now: T2 }));
+  assert.match(again.out, /CONTINUE {5}ST-001 on st-001-demo – orphaned claim; start a story-worker continuation \(pass 2\)/);
+  const claim = readState(dir).claims["ST-001"];
+  assert.deepEqual([claim.attempts, claim.resumed], [2, 1]);
+  assert.equal(readState(dir).consecutiveFailures, 0, "a cut-off is no failure of the story");
+  ok(ms(dir, ["escalate", "ST-001", "--reason", "a decision is missing"]));
+  assert.match(ok(ms(dir, ["summary"])).stdout, /branch `st-001-demo` \(local, not merged\) · 2 \(1 after a cut-off\) pass\(es\)/);
 });

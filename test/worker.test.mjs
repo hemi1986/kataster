@@ -310,7 +310,7 @@ test("report: malformed details are rejected instead of dropped", () => {
 // pure parts
 // --------------------------------------------------------------------------
 test("parseDetails: nothing passed is an empty judgement", () => {
-  assert.deepEqual(parseDetails(undefined), { details: { reason: "", newTerms: [], adrProposals: [], openQuestions: [], findings: [] }, errors: [] });
+  assert.deepEqual(parseDetails(undefined), { details: { reason: "", newTerms: [], adrProposals: [], openQuestions: [], decisions: [], findings: [] }, errors: [] });
   assert.deepEqual(parseDetails([]).errors, ["the details must be a JSON object"]);
 });
 

@@ -434,16 +434,33 @@ the end – and you merge.
   `review`, `result`, `escalate`, `release`, `resume`, `finish`; `status` and `summary` read): every write is locked
   and atomic, a stale lock is broken with a warning, a broken state file is an error and is never overwritten, and a
   hook blocks hand edits. `result … merged` is checked against git and the last verify run.
-- **Resumable.** A claim without a running worker is orphaned: when its story branch exists a worker continues on it
-  and the pass counts as an attempt, otherwise the claim is released. The state is a plain file at the same path for
-  both harnesses, so a run started in Claude Code can be resumed in OpenCode and the other way round.
+- **Resumable.** A claim without a running worker is orphaned. When its pass already handed in a report (kept in
+  `.claude/state/marathon-reports/`), the resumed orchestrator reads it instead of starting another pass; otherwise a
+  worker continues on the story branch – counted as a pass after a cut-off, never as a failure – or the claim is
+  released when there is no branch. The state is a plain file at the same path for both harnesses, so a run started
+  in Claude Code can be resumed in OpenCode and the other way round.
+- **One session at a time.** Sessions outlive their terminal – OpenCode keeps running them in its background service.
+  `start-run` and `resume` make the calling session the orchestrator, `worker.ts start` the calling worker the holder
+  of its story (`.claude/state/marathon-lease.json`); the hooks pass the caller to the scripts. A replaced
+  orchestrator or worker is refused by the scripts and blocked on every tool call by `marathon-guard.ts` (both
+  harnesses) while the run runs, so two workers never build on one checkout. Scheduling work for later (cron,
+  OpenCode automations) is blocked during a run as well.
+- **Decided with a default.** A worker settles a technical detail the story and the conventions leave open (an error
+  status for a body that is not JSON, the time zone of "today") with the conservative default and lists it in its
+  report; it does not block on it. The pull request lists these decisions for the user to confirm. A domain gap – a
+  value a scenario's outcome depends on that nobody named – still ends the pass `blocked`.
+- **Reviews and map before the merge.** `result … merged` refuses a `domain`, `tech-task` or `spike` story without
+  an accepting `acceptance-tester`, and a stale repository map: the orchestrator runs `repo-map.ts` after every merge.
 - **Workers per harness.** Claude Code: `Agent` tool with `subagent_type: story-worker`, continued with `SendMessage`.
   OpenCode: `subagent` tool with `agent: story-worker`; the call returns a `sessionID` and the report arrives as a
   background result; the same tool with that `sessionID` continues the worker.
 
 An unattended run waits at every permission prompt. The workflow scripts are allowed in both harnesses; `git`
 commits, merges and pushes, `gh pr create` and your test commands follow your own permission settings – allow them
-(or run the harness in its auto mode) before you leave a run alone.
+(or run the harness in its auto mode) before you leave a run alone. In Claude Code's `dontAsk` mode a command with a
+heredoc is refused, so the skills pass JSON to the scripts as files under `.kataster/details/`. In OpenCode, consider
+`"automations": false` in `.opencode/opencode.jsonc` for an unattended project as well; the guard blocks creating an
+automation during a run, the setting removes the tool altogether.
 
 ## Story metrics
 

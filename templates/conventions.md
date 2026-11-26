@@ -35,13 +35,21 @@ Stop/CI, and `.claude/rules/*.md` holds path-scoped rules a directory cannot exp
 [OPEN] How does a command run (transaction, authorization, version check)? Where do domain events go?
 How are automatic policies triggered? What is the ID convention?
 
+## Input and errors
+
+[OPEN] What does a command answer when the request is not even the expected shape (no JSON, a field of the wrong
+type)? Which status and body does a rejection get? How is text input normalised before it is checked and stored
+(trimmed, case-folded, kept as entered), and which values count as equal? Which limits exist – and is "no limit
+unless a story names one" the rule? A worker decides what this section leaves open with a default and lists it for
+you to confirm, so answer the questions that recur in every command here.
+
 ## Read models
 
 [OPEN] Where do queries live, and how do they stay out of the write path?
 
 ## Time-based rules
 
-[OPEN] How is "now" injected, so due/overdue rules are testable?
+[OPEN] How is "now" injected, so due/overdue rules are testable? In which time zone is "today" taken?
 
 ## UI and texts
 

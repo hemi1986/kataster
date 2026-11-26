@@ -295,8 +295,11 @@ The first stories build what all others rely on, so they also set up the workflo
   different toolchain, adapt `.claude/hooks/stop-gate.ts` and `code-check.ts` – they are plain Node.
 - **After the foundation exists** write `docs/engineering/conventions.md` from what now exists (not before):
   module layout, how a command runs (transaction, journal, authorization, version check), a read model, a
-  time-based rule, UI texts, test data builders and the fixed clock, and the **seam catalog** – which seam each
-  kind of code is tested at. The user approves it; then re-check the stories that depend on the foundation's results.
+  time-based rule (and the time zone "today" is taken in), UI texts, test data builders and the fixed clock, **input
+  and errors** (a request body that is not the expected shape, how text input is normalised before it is checked and
+  stored, which limits exist), and the **seam catalog** – which seam each kind of code is tested at. The user
+  approves it; then re-check the stories that depend on the foundation's results. What the conventions leave open,
+  a worker decides with a default (*Worker mode*) – the fewer such decisions, the fewer to confirm afterwards.
 
 ## Worker mode (`--worker ST-NNN --base <branch>`)
 
@@ -360,10 +363,30 @@ Wherever a step says *stop*, *ask* or *tell the user*, the pass ends with a repo
 | The story is fine, but something it does not own is missing: a seam that is not in the catalog, a decision no ADR or convention covers, a term you would have to invent, a test runner, a spike's timebox, a tool or environment that fails, a verify that stays red after honest attempts, an `open` finding | `blocked` |
 | Every scenario (domain) is built and every checklist item of the story is ticked (`- [x]`, the last one too – the orchestrator only sets `done`), and step 4 is green | `ready-for-review` |
 
-**`blocked` is a result of equal rank.** An open domain or technical decision is never made in code: when you catch
-yourself choosing between options that the story, `events.yaml`, `CONTEXT.md`, the ADRs and the conventions do not
-settle, stop that part and report the question with its options. A precise `blocked` report is a good pass; a
-guessed implementation is a failed one, however green it is.
+**`blocked` is a result of equal rank.** An open domain decision is never made in code: when the outcome of a
+scenario depends on a value or rule nobody stated (how long a loan runs), when two rules contradict, or when an
+invariant could be read two ways, stop that part and report the question with its options. A precise `blocked`
+report is a good pass; a guessed implementation is a failed one, however green it is.
+
+**A technical detail is decided with a default – not blocked.** The story, `events.yaml`, `CONTEXT.md`, the ADRs and
+the conventions will not name every technical detail. Decide it yourself, and record it in the report's `decisions`
+(`question`, `decision`, `why`), when **all** of these hold:
+
+1. It is about *how*, not about *what the domain does*: the status and body of an error the story does not name (a
+   body that is not JSON), parsing and encoding, the time zone of the system clock, names of helpers and files, the
+   layout of tests, an extra test the scenarios do not ask for.
+2. The default is the conservative one: it rejects rather than accepts, adds no business rule, and stores domain
+   data as the story describes it – no trimming, rounding or limit the story does not ask for.
+3. It follows the conventions and the code that exists (*use the existing `invalid` path*), not a new pattern.
+4. It is cheap to change later: local to this story, no migration, no published contract.
+
+**The absence of a rule is not a question.** Do not invent a length limit, a fee or a normalisation the story does
+not state, and do not block because there is none – build what the story says; a gap worth grilling goes into
+`decisions` as *"no limit – the story names none"*. When one of the four conditions fails, it is a decision for
+somebody else: `blocked`, with the question and its options.
+
+The repository map (`repo-map.ts`, the advisory step in `verify.ts`) and its block in `AGENTS.md` are the
+orchestrator's: a stale map is not yours to regenerate.
 
 **Proposals instead of edits.** A domain word the story uses and `CONTEXT.md` lacks goes into `newTerms`; a decision
 that deserves an ADR goes into `adrProposals`. When the code depends on a word or decision that nobody approved yet,
@@ -376,16 +399,22 @@ the pull request are the orchestrator's.
 
 ### W3. Report
 
-```bash
-node .claude/skills/implement/scripts/worker.ts report ST-NNN --base <branch> --result <result> --details - <<'JSON'
+Write your part with the file tool to `.kataster/details/ST-NNN-report.json` (git-ignored) – a heredoc is refused
+by Claude Code in `dontAsk` mode, the mode an unattended run uses:
+
+```json
 {
   "reason": "<why this result, in one or two sentences – for ready-for-review: what a reviewer should know, e.g. a fast-lane diff that touches authorization>",
   "findings":      [{ "finding": "<the finding>", "action": "fixed|skipped|open" }],
   "newTerms":      [{ "term": "<word>", "meaning": "<what it means here>" }],
   "adrProposals":  [{ "title": "<decision>", "why": "<what depends on it, the options>" }],
+  "decisions":     [{ "question": "<the technical detail that was open>", "decision": "<the default you built>", "why": "<the convention or code it follows, why it is safe>" }],
   "openQuestions": [{ "question": "<what has to be decided, with the options>", "kind": "domain|technical" }]
 }
-JSON
+```
+
+```bash
+node .claude/skills/implement/scripts/worker.ts report ST-NNN --base <branch> --result <result> --details .kataster/details/ST-NNN-report.json
 ```
 
 You pass your judgement; the script reads the rest from git and the last `verify.ts` run – branch, head, commits,
@@ -393,7 +422,13 @@ changed files, uncommitted paths, the verify result – and prints the report as
 left out. It refuses a result the facts contradict (exit 1): `ready-for-review` needs the story `in-progress`, a
 clean tree, a green verify on the branch head, nothing that would stop `done` after the merge (a scenario without
 its test, an unticked checklist item) and no open question or finding; `returned-to-review` needs the story
-in `review` and its open question; `blocked` needs only its reason. Fix what it names, or report `blocked`.
+in `review` and its open question; `blocked` needs only its reason. `decisions` never block. Fix what it names, or
+report `blocked`.
+
+In a marathon run the script also keeps the report for the run (`.claude/state/marathon-reports/`), so an
+orchestrator that was cut off reads it instead of starting another pass – and it refuses a worker the run has
+replaced. A `LEASE … replaces` line from `start`, or a tool call blocked by `marathon-guard`, means another worker
+builds this story now: stop, without a report.
 
 **Your last message is that JSON block, verbatim, and nothing after it.** The orchestrator parses it; it starts the
 reviews, and a later continuation brings their findings back to W1.

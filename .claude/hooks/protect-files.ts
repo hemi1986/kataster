@@ -4,6 +4,8 @@
  * - Generated files (BACKLOG.md, event-storming.md) → blocked; they are rendered by hooks and scripts.
  * - Metrics files (docs/stories/metrics/*.json) → blocked; they are append-only and written by story-metrics.ts.
  * - The marathon state (.claude/state/marathon.json and its archive) → blocked; marathon-state.ts is its only writer.
+ *   The same for the run's lease and its kept worker reports (marathon-lease.json, marathon-reports/) – the scripts
+ *   write them, a session that edits them could make itself the orchestrator.
  * - Accepted ADRs are not edited, only superseded. Two changes are allowed:
  *   - `status: accepted` → `status: superseded by ADR-NNNN`, nothing else,
  *   - an editorial change (typo, outdated path, formatting) that keeps `status: accepted`, keeps every earlier entry
@@ -59,7 +61,7 @@ if (/^docs\/stories\/metrics\/[^/]+\.json$/.test(r)) {
   block(`'${r}' is an append-only metrics file – it is written by \`story-metrics.ts mark … end\` and \`collect\`, never by hand.`);
 }
 
-if (/^\.claude\/state\/marathon(?:\.json|\/[^/]+\.json)$/.test(r)) {
+if (/^\.claude\/state\/marathon(?:\.json|\/[^/]+\.json|-lease\.json|-reports\/[^/]+\.json)$/.test(r)) {
   block(`'${r}' is the state of a marathon run – it changes only through \`node .claude/skills/marathon/scripts/marathon-state.ts\` (locked, atomic, validated).`);
 }
 

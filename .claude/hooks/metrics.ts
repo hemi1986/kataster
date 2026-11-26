@@ -2,8 +2,10 @@
  * Metrics hook – shared by Claude Code (settings.json) and OpenCode (the plugin sends the same JSON).
  *
  *   PreToolUse (Bash)   a `story-metrics.ts mark …` call gets the caller's identity appended right after `mark`:
- *                       --harness, --session, --agent/--agent-type (subagents), --transcript. The command is
- *                       rewritten through `updatedInput`; the permission decision stays with the harness.
+ *                       --harness, --session, --agent/--agent-type (subagents), --transcript. A `worker.ts start|report`
+ *                       or `marathon-state.ts <command>` call gets `--caller <harness>:<id>` – the marathon lease
+ *                       (lib/lease.ts) decides with it who may write. The command is rewritten through `updatedInput`;
+ *                       the permission decision stays with the harness.
  *   PermissionRequest   logs `permission.asked` – the wait ends at the stream's next transcript line.
  *   KatasterEvent       (OpenCode plugin) permission.asked/replied and form.created/replied/cancelled → wait events.
  *   SessionEnd          finalises this session's metrics (entries not written yet, open phases, the unassigned pot).
@@ -14,6 +16,7 @@
  * `npm install --prefix .claude`.
  */
 import { readFileSync } from "node:fs";
+import { callerOf } from "../lib/lease.ts";
 import { segments } from "../lib/shell.ts";
 
 let data: Record<string, any>;
@@ -50,6 +53,24 @@ function rewriteMark(command: string, payload: Record<string, any>): string | nu
   return command.replace(MARK_RE, (m) => `${m} ${flags.join(" ")}`);
 }
 
+const CALLER_RE = /((?:worker\.ts['"]?\s+(?:start|report))|(?:marathon-state\.ts['"]?\s+(?:start-run|claim|review|result|escalate|release|resume|finish|status|summary)))(?=\s|$)/g;
+const CALLER_RUN_RE = /(?:^|\s)\S*(?:worker\.ts\s+(?:start|report)|marathon-state\.ts\s+[a-z-]+)(?:\s|$)/;
+
+/**
+ * The command with `--caller` after every worker/marathon subcommand that really runs; null when there is nothing to
+ * do. Same care as `rewriteMark`: text in a heredoc, a string or an `echo` is never touched – then nothing is.
+ */
+function rewriteCaller(command: string, payload: Record<string, any>): string | null {
+  const textual = [...command.matchAll(CALLER_RE)];
+  if (!textual.length) return null;
+  const executed = segments(command).filter((s) => s.head.split("/").pop() === "node" && CALLER_RUN_RE.test(s.masked));
+  if (executed.length !== textual.length) return null;
+  if (executed.some((s) => /\s--caller(?:\s|=|$)/.test(s.masked))) return null;
+  const caller = callerOf(payload);
+  if (!caller) return null;
+  return command.replace(CALLER_RE, (m) => `${m} --caller ${quote(caller)}`);
+}
+
 const event = String(data.hook_event_name ?? "");
 // KATASTER_METRICS_NOW pins the clock – for tests only.
 const now = (): string => process.env.KATASTER_METRICS_NOW ?? new Date().toISOString();
@@ -58,7 +79,9 @@ const harness = data.harness === "opencode" ? "opencode" : "claude-code";
 try {
   if (event === "PreToolUse") {
     const command = data.tool_name === "Bash" ? data.tool_input?.command : undefined;
-    const next = typeof command === "string" ? rewriteMark(command, data) : null;
+    const marked = typeof command === "string" ? rewriteMark(command, data) ?? command : null;
+    const tagged = marked === null ? null : rewriteCaller(marked, data) ?? marked;
+    const next = tagged !== null && tagged !== command ? tagged : null;
     if (next) {
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", updatedInput: { ...data.tool_input, command: next } } }));
     }

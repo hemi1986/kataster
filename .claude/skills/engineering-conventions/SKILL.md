@@ -22,8 +22,9 @@ The document must answer, at minimum:
 |---|---|
 | Module layout | Which directories exist, what belongs in each, which imports are allowed across them? |
 | Commands and events | How does a command run (transaction, authorization, version check)? Where do domain events go? How are automatic policies triggered? |
+| Input and errors | What does a command answer to a request that is not the expected shape? How is text input normalised before it is checked and stored, which values count as equal, which limits exist (or "none unless a story names one")? |
 | Read models | Where do queries live, how do they stay out of the write path? |
-| Time-based rules | How is "now" injected so due/overdue rules are testable? |
+| Time-based rules | How is "now" injected so due/overdue rules are testable, and in which time zone is "today" taken? |
 | UI and texts | Where do texts live, in which language(s), which shared frames/components exist? |
 | Test data and seams | Test data builders, fixed clock, database per run – and the seam catalog: which seam each kind of code is tested at. |
 

@@ -5,8 +5,9 @@
  *       Records a phase marker. On `end` the pass's tokens and times are appended to
  *       docs/stories/metrics/<target>.json. The PreToolUse hook (Claude Code) / the plugin (OpenCode) adds
  *       --harness, --session, --agent, --agent-type and --transcript; without them the marker carries time only.
- *   collect [--session <id>] [--stale] [--idle-minutes <n>]
+ *   collect [--session <id>] [--stale] [--idle-minutes <n>] [--since <ISO time>]
  *       Finalises runs: missing pass entries, passes left open, and the `unassigned` pot. The session hooks run it.
+ *       `--since` takes every run with a marker since then, idle or not – the end of a marathon run.
  *   review <ST-NNN> <agent> --verdict <verdict> [--blocker n] [--major n] [--minor n] [--question n]
  *       Records one review of a story – who reviewed, the verdict, the findings per severity – in the story's
  *       metrics file. Whoever started the reviewer records it (a marathon run does it through marathon-state.ts).
@@ -21,7 +22,7 @@ import { ROOT } from "../../../lib/config.ts";
 
 const USAGE = `Usage:
   node .claude/skills/metrics/scripts/story-metrics.ts mark <ST-NNN|feature:<slug>> <phase> start|end
-  node .claude/skills/metrics/scripts/story-metrics.ts collect [--session <id>] [--stale] [--idle-minutes <n>]
+  node .claude/skills/metrics/scripts/story-metrics.ts collect [--session <id>] [--stale] [--idle-minutes <n>] [--since <ISO time>]
   node .claude/skills/metrics/scripts/story-metrics.ts review <ST-NNN> <agent> --verdict <verdict> [--blocker <n>] [--major <n>] [--minor <n>] [--question <n>]
   node .claude/skills/metrics/scripts/story-metrics.ts report [--story ST-NNN] [--feature <slug>] [--since YYYY-MM-DD] [--json]
 
@@ -107,14 +108,17 @@ if (command === "mark") {
 }
 
 if (command === "collect") {
-  const { pos, opts, flags } = parse(rest, ["--session", "--idle-minutes"], ["--stale"]);
+  const { pos, opts, flags } = parse(rest, ["--session", "--idle-minutes", "--since"], ["--stale"]);
   if (pos.length) fail(`Unexpected argument: ${pos[0]}`);
   const idle = opts.has("--idle-minutes") ? Number(opts.get("--idle-minutes")) : 30;
   if (!Number.isFinite(idle) || idle < 0) fail("--idle-minutes must be a number ≥ 0.");
+  const since = opts.has("--since") ? Date.parse(opts.get("--since")!) : undefined;
+  if (since !== undefined && !Number.isFinite(since)) fail("--since needs an ISO time, e.g. 2026-11-26T17:09:51Z.");
   const result = collectRuns(await collector(), {
     runs: opts.has("--session") ? [opts.get("--session")!] : undefined,
-    stale: flags.has("--stale") || !opts.has("--session"),
+    stale: since === undefined && (flags.has("--stale") || !opts.has("--session")),
     idleMs: idle * 60_000,
+    since,
   });
   for (const w of result.written) console.log(`${w.target} ${w.phase}: ${w.entries} ${w.entries === 1 ? "entry" : "entries"}`);
   if (!result.written.length) console.log("Nothing to collect.");

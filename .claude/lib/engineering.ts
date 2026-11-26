@@ -211,6 +211,19 @@ export interface MarathonQuestion {
 }
 
 /**
+ * A technical detail the story left open that the worker settled with a default instead of blocking – the shape of
+ * a worker report's `decisions`. It is merged, and listed in the run's pull request for the user to confirm.
+ */
+export interface MarathonDecision {
+  /** What was open. */
+  question: string;
+  /** The default that was built. */
+  decision: string;
+  /** Why it is safe: the convention or code it follows, why it is conservative and cheap to change. */
+  why: string;
+}
+
+/**
  * Where a claimed story is: `worker` – a pass runs (or was cut off), `review` – reviews came back with something a
  * worker has to fix, `merge` – accepted, nothing left to fix. A resumed run reads it to decide how to go on.
  */
@@ -224,6 +237,8 @@ export interface MarathonClaim {
   start: string;
   /** Worker passes started for the story in this run, including the current one. */
   attempts: number;
+  /** Of those, passes a resumed run started because the one before was cut off – not failures of the story. */
+  resumed?: number;
   /** The story's `type` – the foundation gate needs it after the story left the backlog's `ready`. */
   type?: string;
   phase?: MarathonPhase;
@@ -246,12 +261,15 @@ export interface MarathonResult {
   branch?: string;
   /** Passes used so far – a retry continues counting from here. */
   attempts: number;
+  /** Passes that only went on with one that was cut off (see `MarathonClaim.resumed`). */
+  resumed?: number;
   type?: string;
   reason?: string;
   /** `failed` only: passes of the story that ended without a result, including this one. */
   failures?: number;
   reviews?: MarathonReview[];
   openQuestions?: MarathonQuestion[];
+  decisions?: MarathonDecision[];
   notes?: string[];
 }
 
@@ -262,9 +280,11 @@ export interface MarathonEscalation {
   /** The story branch, when one exists – what was built stays there for the user. */
   branch?: string;
   attempts?: number;
+  resumed?: number;
   type?: string;
   reviews?: MarathonReview[];
   openQuestions?: MarathonQuestion[];
+  decisions?: MarathonDecision[];
   notes?: string[];
 }
 

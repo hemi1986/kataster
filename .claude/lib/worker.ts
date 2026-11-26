@@ -224,18 +224,23 @@ export interface WorkerDetails {
   adrProposals: { title: string; why: string }[];
   /** Decisions somebody else has to make. Any entry means the pass is not `ready-for-review`. */
   openQuestions: { question: string; kind: "domain" | "technical" }[];
+  /**
+   * Technical details the story left open that this pass settled with a default (the rule in the implement skill's
+   * worker mode): they do not block, the orchestrator merges and lists them in the pull request for the user.
+   */
+  decisions: { question: string; decision: string; why: string }[];
   /** Review findings of a continuation pass and what became of them. */
   findings: { finding: string; action: "fixed" | "skipped" | "open" }[];
 }
 
-const DETAIL_KEYS = ["reason", "newTerms", "adrProposals", "openQuestions", "findings"];
+const DETAIL_KEYS = ["reason", "newTerms", "adrProposals", "openQuestions", "decisions", "findings"];
 const QUESTION_KINDS = ["domain", "technical"];
 const FINDING_ACTIONS = ["fixed", "skipped", "open"];
 
 /** Parses the worker's part of the report. Unknown keys and incomplete items are errors, not silently dropped. */
 export function parseDetails(raw: unknown): { details: WorkerDetails; errors: string[] } {
   const errors: string[] = [];
-  const details: WorkerDetails = { reason: "", newTerms: [], adrProposals: [], openQuestions: [], findings: [] };
+  const details: WorkerDetails = { reason: "", newTerms: [], adrProposals: [], openQuestions: [], decisions: [], findings: [] };
   if (raw === undefined || raw === null) return { details, errors };
   if (typeof raw !== "object" || Array.isArray(raw)) return { details, errors: ["the details must be a JSON object"] };
   const obj = raw as Record<string, unknown>;
@@ -269,6 +274,7 @@ export function parseDetails(raw: unknown): { details: WorkerDetails; errors: st
   items("openQuestions", ["question", "kind"], (item, where) => {
     if (str(item.kind) && !QUESTION_KINDS.includes(item.kind)) errors.push(`${where}.kind must be ${QUESTION_KINDS.join(" or ")}`);
   });
+  items("decisions", ["question", "decision", "why"]);
   items("findings", ["finding", "action"], (item, where) => {
     if (str(item.action) && !FINDING_ACTIONS.includes(item.action)) errors.push(`${where}.action must be ${FINDING_ACTIONS.join(", ")}`);
   });
@@ -334,5 +340,6 @@ export function buildReport(f: WorkerFacts, result: WorkerResult, details: Worke
     newTerms: details.newTerms,
     adrProposals: details.adrProposals,
     openQuestions: details.openQuestions,
+    decisions: details.decisions,
   };
 }

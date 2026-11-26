@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- **Marathon: one session at a time, enforced.** A real run left two orchestrators and two workers on one checkout
+  (OpenCode runs sessions in its background service, a closed TUI stops nothing). The run now has a lease
+  (`.claude/state/marathon-lease.json`, `lib/lease.ts`): `start-run`/`resume` make the calling session the
+  orchestrator, `worker.ts start` the calling worker the holder of its story; the hooks append `--caller` to
+  `worker.ts` and `marathon-state.ts` calls (`hooks/metrics.ts`). A replaced session is refused by the scripts and
+  blocked on every tool call by the new `marathon-guard.ts` hook in both harnesses; `resume` supersedes the worker of
+  a continued claim at once. The `git status` heuristic in the skill is gone. Scheduling work for later (Claude Code's
+  cron/triggers/wakeups, OpenCode automations, also from a Code Mode script) is blocked while a run runs.
+- **Marathon: a report is never lost.** `worker.ts report` keeps the report of a claimed story
+  (`.claude/state/marathon-reports/ST-NNN.json`); `resume` prints `REPORT` and reads it instead of starting another
+  pass when the branch head is unchanged. A pass after a cut-off is counted as `resumed` and shown as such in the
+  summary – it is no failure.
+- **Decided with a default.** Worker reports carry `decisions` (`question`, `decision`, `why`) for technical details
+  the story and the conventions leave open; they do not block `ready-for-review`. The implement skill states when a
+  worker decides (technical, conservative, following the conventions, cheap to change) and that a missing rule is no
+  question; domain gaps stay `blocked`. `result … merged` takes them, the summary lists them under *Decided with a
+  default – confirm or change*. Reviewer questions no longer go into a worker's task.
+- **Merge gate.** `result … merged` refuses a `domain`, `tech-task` or `spike` story without an accepting
+  `acceptance-tester` review, and a stale repository map; the skill runs `repo-map.ts` after each merge (`AGENTS.md`
+  counts as bookkeeping for the generated block).
+- **Metrics before the pull request.** `story-metrics.ts collect --since <ISO time>` finalises every session with a
+  marker since then, idle or not; `finish` prints it with the run's start, so the pull request's metrics include the
+  tokens spent outside a phase (in OpenCode they were missing until the next session start).
+- **No heredocs in the skills.** Claude Code refuses a heredoc in `dontAsk` mode; `--details` JSON is written to
+  `.kataster/details/` and passed as a file.
+- **Input and errors.** The conventions template, the conventions skill and the foundation guidance ask how a
+  malformed request is answered, how text is normalised, which limits exist and in which time zone "today" is taken;
+  `/feature` grills validation, limits, normalisation and error behaviour per command.
+
 - **Story metrics.** `story-metrics.ts mark <ST-NNN|feature:<slug>> <phase> start|end` marks a phase; `/shape`,
   `/feature`, `/review-stories` and `/implement` mark theirs. Tokens (input, output incl. reasoning, cache
   read/write), model, harness, agent time and user wait time land append-only in `docs/stories/metrics/`, one entry
