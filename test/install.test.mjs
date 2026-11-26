@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { ALLOW, OPENCODE_ALLOW, PKG } from "../src/install.mjs";
+import { isOwnRule } from "../src/permissions.mjs";
 import { parseJsonc, sha } from "../src/util.mjs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -149,7 +150,9 @@ test("merges the OpenCode rules into an existing config: the project's own first
   assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
   const config = parseJsonc(read(dir, ".opencode/opencode.jsonc"));
   assert.equal(config.model, "x/y");
-  assert.deepEqual(config.permissions, [own, dup, ...OPENCODE_ALLOW.filter((r) => r.resource !== "git diff *")]);
+  // A catch-all `ask`: only Kataster's own scripts go after it, everything else in front of it, where the `ask` wins.
+  const missing = OPENCODE_ALLOW.filter((r) => r.resource !== "git diff *");
+  assert.deepEqual(config.permissions, [...missing.filter((r) => !isOwnRule(r)), own, dup, ...missing.filter(isOwnRule)]);
 
   // An installation from before the mirror has no rules at all: an upgrade adds every one.
   const old = repo({ "package.json": "{}", ".opencode/opencode.jsonc": JSON.stringify({ watcher: { ignore: ["tmp/**"] } }) });
@@ -193,10 +196,16 @@ test("an upgrade edits a commented opencode.jsonc in place: comments and formatt
   assert.ok(text.startsWith('{\n  // Our model – pinned, see ADR 0007.\n  "model": "x/y",\n\n  /* Shell'), text);
   const config = parseJsonc(text);
   assert.equal(config.automations, false);
-  assert.deepEqual(config.permissions, [{ action: "shell", resource: "*", effect: "ask" }, ...OPENCODE_ALLOW]);
+  assert.deepEqual(config.permissions, [
+    ...OPENCODE_ALLOW.filter((r) => !isOwnRule(r)),
+    { action: "shell", resource: "*", effect: "ask" },
+    ...OPENCODE_ALLOW.filter(isOwnRule),
+  ]);
   assert.ok(config.watcher.ignore.includes("tmp/**") && config.watcher.ignore.includes("**/node_modules/**"));
   // Our rules are written in the style of the project's own: one rule per line.
   assert.match(text, /\n {4}\{ "action": "shell", "resource": "git status \*", "effect": "allow" \},?\n/);
+  // The comment in front of the project's catch-all stays with it: ours are inserted above the comment's rule.
+  assert.match(text, /"git log \*", "effect": "allow" \},\n {4}\{ "action": "shell", "resource": "\*", "effect": "ask" \}, \/\/ catch-all\n/);
 
   // A second upgrade has nothing to add and leaves the file byte for byte.
   assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);

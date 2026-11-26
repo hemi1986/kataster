@@ -10,8 +10,10 @@
   // Per-agent write scopes are expressed as `edit` permissions in .opencode/agents/*.md.
   //
   // `permissions` mirrors Claude Code's `permissions.allow` (ALLOW in the installer): the workflow scripts and the
-  // git/gh commands Claude Code allows run without a prompt, even where a project puts `shell` behind `ask`. On
-  // upgrade the installer appends missing rules after the project's own.
+  // git/gh commands Claude Code allows run without a prompt. The last matching rule wins, so your own rules belong
+  // after these. An upgrade never loosens what you restrict: a missing rule goes in front of your `deny` (and, for
+  // anything but Kataster's own scripts, your `ask`), or is left out when that rule is in another config file;
+  // `npx kataster doctor` says what does not work then.
 
   // Automations run a prompt, a Code Mode script or a shell command later, on a timer or an event – outside the
   // session's permissions and after it ended. In a marathon test run an agent whose shell commands were denied went

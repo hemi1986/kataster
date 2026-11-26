@@ -63,7 +63,7 @@ How a run protects itself:
 ### Behaviour changes – check when you upgrade
 
 - **OpenCode automations are off by default.** `.opencode/opencode.jsonc` ships `"automations": false`, and
-  `upgrade` adds it where your config does not set the key. An automation runs later, outside the session's
+  `upgrade` adds it where none of your OpenCode configs sets the key. An automation runs later, outside the session's
   permissions and the Kataster hooks; in a marathon test run an agent whose shell commands were denied used
   `automation.create` to get around them.
   **Migration:** if you use automations, set `"automations": true` – before or after the upgrade; your value is kept.
@@ -83,22 +83,44 @@ How a run protects itself:
   (git-ignored), because Claude Code refuses a heredoc in `dontAsk` mode.
   **Migration:** none from 0.6.3, whose skills used no heredocs. Skills or scripts of your own that call
   `worker.ts` or `marathon-state.ts` should pass `--details <file>`.
-- **OpenCode now mirrors Claude Code's allow list.** The workflow scripts, `git status/diff/log` and
-  `gh issue/label` become `shell` allow rules in `opencode.jsonc`. OpenCode applies the **last** matching rule, so
-  rules appended after yours override a stricter catch-all (`ask`, `deny`) for those commands. Claude Code gains
-  allow entries for the `metrics` and `marathon` scripts.
-  **Migration:** to keep a prompt or a block, put your rule **after** the Kataster rules; `upgrade` only appends
-  missing ones and never moves yours.
+- **OpenCode now mirrors Claude Code's allow list – without loosening yours.** The workflow scripts,
+  `git status/diff/log` and `gh issue/label` become `shell` allow rules in `opencode.jsonc`. An upgrade never makes
+  your permissions weaker:
+  - **Your `deny` always wins**, `shell * deny` included.
+  - **Your `ask` yields only to Kataster's own scripts** (`node .claude/skills/*/scripts/*`). For `gh issue`,
+    `gh label`, `git` and every other command it stays.
+  - OpenCode applies the **last** matching rule, so a Kataster rule that would override one of yours is added **in
+    front of it**. OpenCode also reads `opencode.json[c]` at the root and in parent directories and the older
+    `permission` and `tools` keys *before* the list in `.opencode/opencode.jsonc`; a rule that would override one of
+    those is **not added**. The same when such a file cannot be read.
+  - `upgrade` lists what it held back, and `kataster doctor` warns for each of your rules that takes a Kataster rule
+    out of work and says what follows (for example *the backlog sync will ask for approval*). It also warns when one
+    of your rules stands *before* a Kataster rule that overrides it.
+  - Your global OpenCode config (`~/.config/opencode`) is not part of the project and is not considered here:
+    OpenCode applies the project's rules after it.
+
+  Claude Code gains allow entries for the `metrics` and `marathon` scripts; there your `deny` and `ask` win anyway,
+  and they stay as you wrote them.
+  **Migration:** nothing is required. Run `npx kataster doctor`; to let a command run that one of your rules holds,
+  move the Kataster rule behind yours (or change yours) – the upgrade keeps the order you choose.
 - **More hooks, and metrics files to commit.** `.claude/settings.json` and the OpenCode plugin run `metrics.ts`
   (session start and end, shell calls, permission prompts – it adds the caller's session id to the scripts' marker
   commands) and `marathon-guard.ts` (inactive without a run). The workflow skills write
   `docs/stories/metrics/*.json`; commit them. `/implement` and `verify.ts` ignore uncommitted ones.
+  Both harnesses check permissions against the rewritten command, so a command that a `deny` or `ask` rule of yours
+  matches only as written is **not** rewritten – your rule applies. (If you then approve such an `ask`, that call
+  runs without the caller's id: no marathon lease check and no token attribution for it.)
 - **Project files are not rewritten.** `docs/workflow.md`, `docs/engineering/conventions.md` and the story README are
   yours. **Migration (optional):** compare them with `templates/` for the new *Input and errors* section and the
   worker/marathon flow.
 
 ### Fixes
 
+- **`init` and `upgrade` no longer delete your Claude Code permissions.** A `.claude/settings.json` that is not plain
+  JSON – a comment, a trailing comma, a byte order mark – was treated as empty and **overwritten**, with your `deny`,
+  `ask`, `allow` and hooks. It is now left untouched; the run says so, `doctor` fails until the file is plain JSON,
+  and the next upgrade wires the hooks in. This affects 0.6.3 and earlier: **if you installed or upgraded over such a
+  file, compare `.claude/settings.json` with your git history.**
 - **The Stop gate no longer loses the first changed file.** `stop-gate.ts`, `characterize.ts` and `affected.ts`
   trimmed the output of `git status --porcelain` before cutting off the status columns, which shifted the path of an
   unstaged file: the Stop gate skipped the first modified file (and ran nothing when it was the only one), and

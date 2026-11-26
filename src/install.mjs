@@ -2,7 +2,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { addProperty, appendItems, nodeValue, parseTree } from "./jsonc.mjs";
+import { addProperty, appendItems, inline, insertItems, nodeValue, parseTree, replaceValue } from "./jsonc.mjs";
+import { earlierConfigs, fileRules, planRules, rulesOf, TARGET_CONFIG } from "./permissions.mjs";
 import {
   exists, mergeUnique, parseJsonc, read, readJson, relPosix, sha, timestamp, toPosix, upsertBlock, write, writeJson,
 } from "./util.mjs";
@@ -137,6 +138,8 @@ export class Installer {
     this.created = [];
     this.updated = [];
     this.skipped = [];
+    /** What the user has to know about this run – held-back permission rules, a file that could not be merged. */
+    this.notes = [];
     // A file the project deleted on purpose stays deleted on upgrade, like a removed conffile in dpkg: the manifest
     // remembers it, and only `upgrade --restore` brings it back. `seeded` lists the docs skeleton files the installer
     // has created; they are project content, so their hashes are not tracked, but a missing one was deleted.
@@ -299,7 +302,18 @@ export class Installer {
   mergeSettings() {
     const path = join(this.root, ".claude", "settings.json");
     const existing = readJson(path);
-    const base = existing && typeof existing === "object" ? existing : {};
+    // A file that is there but cannot be read – a comment, a trailing comma, a byte order mark – is never replaced:
+    // writing our settings over it would drop the project's `deny` and `ask` rules.
+    if (existsSync(path) && !(existing && typeof existing === "object" && !Array.isArray(existing))) {
+      this.record("skip", path, "not plain JSON – left untouched");
+      this.skipped.push(path);
+      this.notes.push(
+        ".claude/settings.json is not plain JSON and was left untouched, so your permission rules stay. The Kataster hooks " +
+          "and allow rules are NOT wired up in Claude Code: fix the file and run upgrade again.",
+      );
+      return;
+    }
+    const base = existing ?? {};
     const permissions = base.permissions ?? {};
     const hooks = { ...(base.hooks ?? {}) };
 
@@ -336,11 +350,34 @@ export class Installer {
   mergeOpencodeConfig() {
     const path = join(this.root, ".opencode", "opencode.jsonc");
     const template = read(join(PKG, ".opencode", "opencode.jsonc"));
+    const ours = parseJsonc(template) ?? {};
+    // The configs OpenCode reads before this file: nothing written here may override what the project says there.
+    const others = earlierConfigs(this.root);
+    const unreadable = others.filter((c) => !c.config).map((c) => c.file);
+    const earlier = rulesOf(others);
+    if (unreadable.length) {
+      // What it forbids is unknown, so no allow rule is added at all.
+      earlier.unshift({ action: "shell", resource: "*", effect: "deny", file: unreadable.join(", "), unreadable: true });
+    }
+    const automations = others.some((c) => c.config && "automations" in c.config);
+
     if (!existsSync(path)) {
-      this.put(path, template);
+      const plan = planRules({ earlier, list: [], wanted: OPENCODE_ALLOW });
+      let text = template;
+      if (plan.held.length) {
+        const list = plan.appended.map((rule) => `    ${inline(rule)}`).join(",\n");
+        text = replaceValue(text, ["permissions"], list ? `[\n${list}\n  ]` : "[]");
+      }
+      // The project's own `automations` choice in another config stays the effective one.
+      if (automations) {
+        const theirs = others.filter((c) => c.config && "automations" in c.config).at(-1).config.automations;
+        text = replaceValue(text, ["automations"], JSON.stringify(theirs));
+      }
+      this.reportRules(plan);
+      this.put(path, text);
       return;
     }
-    const ours = parseJsonc(template) ?? {};
+
     let text = read(path);
     let existing;
     try {
@@ -358,7 +395,8 @@ export class Installer {
     // `automations: false` comes from ours unless the project set the key itself – an upgrade never turns them back on
     // or off against the project's choice.
     for (const [key, value] of Object.entries(ours)) {
-      if (key !== "permissions") text = addProperty(text, [], key, value);
+      if (key === "permissions" || (key === "automations" && automations)) continue;
+      text = addProperty(text, [], key, value);
     }
     const watcher = existing.watcher;
     if (watcher && typeof watcher === "object" && !Array.isArray(watcher)) {
@@ -367,17 +405,39 @@ export class Installer {
         text = appendItems(text, ["watcher", "ignore"], (ours.watcher?.ignore ?? []).filter((g) => !watcher.ignore.includes(g)));
       }
     }
-    // Permission rules: the project's own first, ours appended when missing. OpenCode applies the last matching rule,
-    // so a project's catch-all `ask` does not prompt for the workflow scripts – like Claude Code's allow list. A
-    // project that writes something other than a rule list keeps it untouched.
-    if (existing.permissions === undefined) {
-      text = addProperty(text, [], "permissions", OPENCODE_ALLOW);
-    } else if (Array.isArray(existing.permissions)) {
-      const key = (rule) => [rule?.action, rule?.resource, rule?.effect].join("\0");
-      const have = new Set(existing.permissions.map(key));
-      text = appendItems(text, ["permissions"], OPENCODE_ALLOW.filter((rule) => !have.has(key(rule))));
+    // Permission rules never loosen the project's: where one of ours would override a `deny` (or, outside Kataster's
+    // own scripts, an `ask`), it goes in front of that rule – the last match wins – or, when the rule stands in an
+    // earlier file or key, is left out (lib: `permissions.mjs`). A `permissions` value that is not a list stays as is.
+    if (existing.permissions === undefined || Array.isArray(existing.permissions)) {
+      const legacy = fileRules({ tools: existing.tools, permission: existing.permission }).map((r) => ({ ...r, file: TARGET_CONFIG }));
+      const list = (existing.permissions ?? []).map((r) => ({ ...r, file: TARGET_CONFIG }));
+      const plan = planRules({ earlier: [...earlier, ...legacy], list, wanted: OPENCODE_ALLOW });
+      if (existing.permissions === undefined) {
+        if (plan.appended.length) text = addProperty(text, [], "permissions", plan.appended);
+      } else {
+        text = appendItems(text, ["permissions"], plan.appended);
+        // From the back, so the indexes in front stay valid.
+        for (const { index, rules } of [...plan.inserts].reverse()) text = insertItems(text, ["permissions"], index, rules);
+      }
+      this.reportRules(plan);
     }
     this.put(path, text, { merge: true });
+  }
+
+  /** Says which rules were held back, once per rule of the project that held them. */
+  reportRules(plan) {
+    const groups = new Map();
+    for (const { rule, by, left } of plan.held) {
+      const what = by.unreadable
+        ? `${by.file} cannot be read`
+        : `your \`${by.action} ${by.resource}\` ${by.effect} (${by.file})`;
+      const key = `${what}\0${left}`;
+      groups.set(key, { what, left, rules: [...(groups.get(key)?.rules ?? []), rule.resource] });
+    }
+    for (const { what, left, rules } of groups.values()) {
+      const how = left ? "not added" : "added in front of it, where it wins";
+      this.notes.push(`OpenCode: ${rules.length} Kataster allow rule(s) ${how}, because of ${what}: ${rules.join(", ")}`);
+    }
   }
 
   mergeAgentsFile(profile) {
@@ -511,6 +571,7 @@ export class Installer {
       created: this.created.length,
       updated: this.updated.length,
       conflicts: this.conflicts,
+      notes: this.notes,
       keptDeleted: this.keptDeleted,
       actions: this.actions,
     };

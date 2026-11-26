@@ -479,7 +479,10 @@ In Claude Code these are `Bash(…)` entries in `permissions.allow` and `permiss
 `.claude/settings.json`, plus `Edit(/**)` and `Write(/**)` to allow and `AskUserQuestion` to deny; run it with `--permission-mode dontAsk`, which refuses what is not allowed instead of
 waiting. It applies `allow` rules only once the folder is trusted. In OpenCode they are `shell` rules in
 `.opencode/opencode.jsonc`, plus a `question` deny: put a `shell *` deny first, your allow rules after it and the denies last – the last
-matching rule wins. Do not use a blanket auto mode (`--auto`, bypassing permissions) for an unattended run. A `*` in
+matching rule wins. A later upgrade never puts a rule where it would override yours: a rule a new version adds lands in front
+of your `shell *` deny and does nothing until you move it behind it – `npx kataster doctor` names it. Your global
+OpenCode config (`~/.config/opencode`) is not considered by the installer, and OpenCode applies the project's rules
+after it. Do not use a blanket auto mode (`--auto`, bypassing permissions) for an unattended run. A `*` in
 a rule matches any text, spaces included, so keep the denies even with narrow allows. Rules like these and the
 Kataster hooks are guard rails, not a sandbox: whatever your allowed commands run (a package script, a test) runs
 with your rights, so use a repository and credentials you can afford to have touched.
@@ -524,6 +527,12 @@ overwrite files you changed locally – it lists them instead. `--force` overwri
 `.kataster/backup/`. A file you deleted stays deleted – a docs skeleton `README.md` you do not want, or
 `.claude/package-lock.json` in a pnpm repository; `upgrade --restore` brings such files back, and `doctor` fails if
 another workflow file still uses one.
+
+**An upgrade never loosens your permissions.** Your `deny` rules always win, and your `ask` rules yield only to
+Kataster's own scripts. In OpenCode, where the last matching rule wins, a Kataster rule that would override one of
+yours is added in front of it, or left out when yours stands in another config file; the upgrade lists these and
+`doctor` says what does not work because of them. A `.claude/settings.json` that is not plain JSON is left untouched –
+fix it and run the upgrade again.
 
 Project content includes `docs/workflow.md` and the context maps. An upgrade does not rewrite them; compare
 `docs/workflow.md` with `templates/docs/workflow.md` if you want the new rules in an existing project. The schema

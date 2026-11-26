@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -231,3 +231,58 @@ test("both harnesses wire the marathon guard", async () => {
   assert.match(plugin, /run\(\s*"marathon-guard\.ts"/);
   assert.match(plugin, /command\.includes\("worker\.ts"\) \|\| command\.includes\("marathon-state\.ts"\)/);
 });
+
+test("the rewrite never takes a command out of a deny or ask rule", () => {
+  // A copy of the hooks in a project of its own: the rules are read from the project the hooks are installed in.
+  const project = mkdtempSync(join(tmpdir(), "kataster-rewrite-"));
+  const home = mkdtempSync(join(tmpdir(), "kataster-home-"));
+  cpSync(resolve(hooks, "..", "lib"), join(project, ".claude", "lib"), { recursive: true });
+  cpSync(hooks, join(project, ".claude", "hooks"), { recursive: true });
+  mkdirSync(join(project, ".git"));
+  const put = (root, path, value) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), typeof value === "string" ? value : JSON.stringify(value));
+  };
+  const status = "node .claude/skills/marathon/scripts/marathon-state.ts status";
+  const call = (command, payload = {}) => {
+    const r = spawnSync(process.execPath, [join(project, ".claude", "hooks", "metrics.ts")], {
+      input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: { command }, session_id: "s1", ...payload }),
+      encoding: "utf8",
+      env: { ...process.env, HOME: home, XDG_CONFIG_HOME: join(home, ".config") },
+    });
+    assert.equal(r.status, 0, r.stderr);
+    return r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.updatedInput.command : null;
+  };
+  const rewritten = `${status} --caller 'claude-code:s1'`;
+  assert.equal(call(status), rewritten);
+
+  // Claude Code: exact deny and ask, in each settings file, also as one part of a compound command.
+  for (const [root, file, effect] of [[project, ".claude/settings.json", "deny"], [project, ".claude/settings.local.json", "ask"], [home, ".claude/settings.json", "deny"]]) {
+    put(root, file, { permissions: { [effect]: [`Bash(${status})`] } });
+    assert.equal(call(status), null, `${file} ${effect}`);
+    assert.equal(call(`git status && ${status}`), null, "compound");
+    assert.equal(call("node .claude/skills/marathon/scripts/marathon-state.ts resume"), "node .claude/skills/marathon/scripts/marathon-state.ts resume --caller 'claude-code:s1'", "other commands are rewritten");
+    rmSync(join(root, file));
+  }
+  // A rule that matches the rewritten command as well loses nothing: the lease keeps working.
+  put(project, ".claude/settings.json", { permissions: { deny: [`Bash(${status} *)`, "Bash(git push *main*)"], ask: ["Bash(node *)"] } });
+  assert.equal(call(status), rewritten);
+  rmSync(join(project, ".claude/settings.json"));
+
+  // OpenCode: its own configs, with comments; the list, the older key, agent rules and the global config.
+  const oc = { harness: "opencode", session_id: "ses_1" };
+  const exact = { action: "shell", resource: status, effect: "deny" };
+  for (const [root, file, config] of [
+    [project, ".opencode/opencode.jsonc", `// ours\n{ "permissions": [${JSON.stringify(exact)},] }`],
+    [project, "opencode.json", { permission: { bash: { [status]: "ask" } } }],
+    [project, "opencode.jsonc", { agents: { build: { permissions: [exact] } } }],
+    [home, ".config/opencode/opencode.json", { permissions: [exact] }],
+  ]) {
+    put(root, file, config);
+    assert.equal(call(status, oc), null, file);
+    rmSync(join(root, file));
+  }
+  put(project, ".opencode/opencode.jsonc", { permissions: [{ action: "shell", resource: "*", effect: "deny" }, { action: "shell", resource: status, effect: "allow" }] });
+  assert.equal(call(status, oc), `${status} --caller 'opencode:ses_1'`);
+});
+
