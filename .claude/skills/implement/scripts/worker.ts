@@ -160,6 +160,7 @@ if (errs.length) {
   );
   process.exit(1);
 }
+for (const warning of w.reportWarnings(result, details)) console.error(`⚠ ${warning}`);
 const report = w.buildReport(facts, result, details);
 // Kept for the run: when the orchestrator is cut off before it reads this, a resumed one reads it from here.
 if (inRun) keepReport({ run: inRun.run, story: id, pass: inRun.claim.attempts, caller, at: now(), head: facts.head, result, report });

@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { changedPaths } from "../.claude/lib/git.ts";
-import { parseDetails, planStart, reportErrors } from "../.claude/lib/worker.ts";
+import { parseDetails, planStart, reportErrors, reportWarnings } from "../.claude/lib/worker.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
@@ -330,6 +330,37 @@ test("planStart and reportErrors decide from the facts alone", () => {
   assert.ok(errs.some((e) => /not on the story branch/.test(e)));
   assert.ok(errs.some((e) => /not 'in-progress'/.test(e)));
   assert.ok(errs.some((e) => /no commit/.test(e)));
+});
+
+test("reportErrors: a tagged merge blocker is never a decision or a skipped finding; an untagged look-alike warns", () => {
+  const green = {
+    story: "ST-012", title: "T", type: "domain", storyStatus: "in-progress", baseStatus: "ready", base: "main", baseCommit: "abc1234",
+    branch: "st-012-x", branchExists: true, current: "st-012-x", head: "def5678", commits: [{ sha: "def5678", subject: "ST-012: x" }],
+    changedFiles: ["src/x.ts"], uncommitted: [], verify: { status: "green", at: null, commit: "def5678", failed: [] }, reviews: [],
+    unlinked: null, doneBlockers: [],
+  };
+  const judged = (over) => ({ reason: "", newTerms: [], adrProposals: [], openQuestions: [], decisions: [], findings: [], ...over });
+  const ordinary = { question: "Order of the list", decision: "by inventory number", why: "the convention for lists" };
+  const lookalike = { question: "Names compared for uniqueness", decision: "compared after trimming spaces, case kept", why: "cheap" };
+  const details = judged({
+    decisions: [ordinary, lookalike],
+    findings: [
+      { finding: "the member list shows every e-mail address to anonymous callers (merge-blocker: privacy)", action: "skipped" },
+      { finding: "naming of the helper", action: "skipped" },
+    ],
+  });
+  const errs = reportErrors(green, "ready-for-review", details);
+  assert.equal(errs.length, 1, errs.join("\n"));
+  assert.match(errs[0], /^skipped findings\[0\] \(privacy\):.*never decided with a default or skipped/);
+
+  // The look-alike does not stop the report – it warns.
+  assert.deepEqual(reportErrors(green, "ready-for-review", judged({ decisions: [ordinary, lookalike] })), []);
+  const warnings = reportWarnings("ready-for-review", judged({ decisions: [ordinary, lookalike] }));
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /^decisions\[1\] \(rule-bypass\):.*looks like a merge blocker/);
+  // `blocked` with the blocker as its reason stays possible – a pass can always say that it is stuck.
+  assert.deepEqual(reportErrors(green, "blocked", judged({ reason: "the 500 on a malformed body cannot be fixed without the parser change in ST-003" })), []);
+  assert.deepEqual(reportWarnings("blocked", details), []);
 });
 
 // --------------------------------------------------------------------------

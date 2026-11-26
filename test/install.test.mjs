@@ -170,6 +170,45 @@ test("merges the OpenCode rules into an existing config: the project's own first
   assert.deepEqual(parseJsonc(read(odd, ".opencode/opencode.jsonc")).permissions, { shell: "ask" });
 });
 
+test("an upgrade edits a commented opencode.jsonc in place: comments and formatting stay", () => {
+  const own = `{
+  // Our model – pinned, see ADR 0007.
+  "model": "x/y",
+
+  /* Shell stays behind a prompt here. */
+  "permissions": [
+    { "action": "shell", "resource": "*", "effect": "ask" }, // catch-all
+  ],
+  "watcher": {
+    "ignore": ["tmp/**"] // scratch output
+  }
+}
+`;
+  const dir = repo({ "package.json": "{}", ".opencode/opencode.jsonc": own });
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  const text = read(dir, ".opencode/opencode.jsonc");
+  for (const comment of ["// Our model – pinned, see ADR 0007.", "/* Shell stays behind a prompt here. */", "// catch-all", "// scratch output"]) {
+    assert.ok(text.includes(comment), `comment kept: ${comment}`);
+  }
+  assert.ok(text.startsWith('{\n  // Our model – pinned, see ADR 0007.\n  "model": "x/y",\n\n  /* Shell'), text);
+  const config = parseJsonc(text);
+  assert.equal(config.automations, false);
+  assert.deepEqual(config.permissions, [{ action: "shell", resource: "*", effect: "ask" }, ...OPENCODE_ALLOW]);
+  assert.ok(config.watcher.ignore.includes("tmp/**") && config.watcher.ignore.includes("**/node_modules/**"));
+  // Our rules are written in the style of the project's own: one rule per line.
+  assert.match(text, /\n {4}\{ "action": "shell", "resource": "git status \*", "effect": "allow" \},?\n/);
+
+  // A second upgrade has nothing to add and leaves the file byte for byte.
+  assert.equal(run(["init", dir, "--yes", "--no-install"]).code, 0);
+  assert.equal(read(dir, ".opencode/opencode.jsonc"), text);
+
+  // The shipped template is commented too: an upgrade of a fresh install keeps it as it is.
+  const fresh = repo({ "package.json": "{}" });
+  assert.equal(run(["init", fresh, "--yes", "--no-install"]).code, 0);
+  assert.equal(run(["init", fresh, "--yes", "--no-install"]).code, 0);
+  assert.equal(read(fresh, ".opencode/opencode.jsonc"), readFileSync(join(PKG, ".opencode", "opencode.jsonc"), "utf8"));
+});
+
 test("detects a greenfield repository and does not touch existing project docs", () => {
   const dir = repo({ "README.md": "# Empty\n", "package.json": "{}" });
 

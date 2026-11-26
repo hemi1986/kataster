@@ -12,6 +12,11 @@
  *       Exit 3 = the run has to stop (limit, budget, red verify, foundation gate, nothing planned).
  *   review ST-NNN <agent> --verdict <verdict> [--blocker n] [--major n] [--minor n] [--question n]
  *       Records a review on the claim and in the story metrics, and prints what follows: fixes, merge or escalate.
+ *       The merge blockers are the findings the review file tags `merge-blocker: <kind>` (lib/merge-blockers.ts);
+ *       a finding that looks like one without the tag is a WARN line and goes into the summary, never blocking.
+ *   merge-check ST-NNN [--details <file>|-]
+ *       read-only: refuses (exit 1) while a reviewer's last review has a merge blocker or the details carry one as a
+ *       decision or an open question – run before `git merge`, so a blocker never reaches the integration branch.
  *   result ST-NNN merged|failed [--reason <text>] [--details <file>|-]
  *       Ends the claim. `merged` is checked against git and the last verify.ts run.
  *   escalate ST-NNN --reason <text> [--details <file>|-]
@@ -44,13 +49,29 @@ import * as m from "../../../lib/marathon.ts";
 import type { ReviewVerdict } from "../../../lib/metrics.ts";
 import { appendReview, REVIEW_VERDICTS } from "../../../lib/metrics.ts";
 import { emptyLease, leaseOf, readLease, readReport, reportFile, orchestratorError, supersedeWorker, takeOrchestrator, type Lease } from "../../../lib/lease.ts";
+import { countTagged, untaggedFindings } from "../../../lib/merge-blockers.ts";
 import { storyBranch, workerFacts } from "../../../lib/worker.ts";
 
 const SCRIPT = "node .claude/skills/marathon/scripts/marathon-state.ts";
+
+/** Review files of the two reviewers (`docs/reviews/ST-NNN-<name>.md`); any other agent writes `ST-NNN-<agent>.md`. */
+const REVIEW_FILE: Record<string, string> = { "code-reviewer": "code-review", "acceptance-tester": "acceptance" };
+
+/**
+ * The merge blockers of a reviewer's file: the findings tagged `merge-blocker: <kind>` – the only ones that block –
+ * and the untagged findings that look like one.
+ */
+function reviewFileBlockers(id: string, agent: string): { tagged: number; possible: e.PossibleMergeBlocker[] } {
+  const path = join(d.ROOT, "docs", "reviews", `${id}-${REVIEW_FILE[agent] ?? agent}.md`);
+  if (!existsSync(path)) return { tagged: 0, possible: [] };
+  const text = readFileSync(path, "utf8");
+  return { tagged: countTagged(text), possible: untaggedFindings(text) };
+}
 const USAGE = `Usage:
   ${SCRIPT} start-run [--base <branch>] [--max-stories <n>] [--max-failures <n>] [--no-gate-foundation] [--budget-tokens <n>] [--budget-usd <n>]
   ${SCRIPT} claim ST-NNN [--continue]
   ${SCRIPT} review ST-NNN <agent> --verdict <verdict> [--blocker <n>] [--major <n>] [--minor <n>] [--question <n>]
+  ${SCRIPT} merge-check ST-NNN [--details <file>|-]
   ${SCRIPT} result ST-NNN merged|failed [--reason <text>] [--details <file>|-]
   ${SCRIPT} escalate ST-NNN --reason <text> [--details <file>|-]
   ${SCRIPT} release ST-NNN
@@ -77,7 +98,7 @@ if (command === "--help" || command === "-h") {
   console.log(USAGE);
   process.exit(0);
 }
-const COMMANDS = ["start-run", "claim", "review", "result", "escalate", "release", "resume", "finish", "status", "summary"];
+const COMMANDS = ["start-run", "claim", "review", "merge-check", "result", "escalate", "release", "resume", "finish", "status", "summary"];
 if (!command || !COMMANDS.includes(command)) {
   console.error(`${command ? `Unknown command: ${command}` : "No command given."}\n\n${USAGE}`);
   process.exit(2);
@@ -315,7 +336,9 @@ try {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(agent)) usage(`'${agent}' is not an agent name.`);
     const verdict = (args.values.get("--verdict") ?? usage("--verdict is needed.")) as ReviewVerdict;
     if (!REVIEW_VERDICTS.includes(verdict)) usage(`--verdict must be one of ${REVIEW_VERDICTS.join(", ")}.`);
-    const review = { agent, verdict, blocker: count("--blocker", 0), major: count("--major", 0), minor: count("--minor", 0), question: count("--question", 0) };
+    const counts = { blocker: count("--blocker", 0), major: count("--major", 0), minor: count("--minor", 0), question: count("--question", 0) };
+    const file = reviewFileBlockers(id, agent);
+    const review = { agent, verdict, ...counts, mergeBlocker: file.tagged, ...(file.possible.length ? { possible: file.possible } : {}) };
     const at = iso();
     const next = await update((state) => {
       const applied = m.applyReview(state, id, review, at);
@@ -323,7 +346,7 @@ try {
     });
     // The story metrics get the same record; a failure there never blocks the run.
     try {
-      appendReview(d.ROOT, id, { ...review, at });
+      appendReview(d.ROOT, id, { agent, verdict, ...counts, at });
     } catch (err) {
       console.error(`⚠ the review was not written to docs/stories/metrics/${id}.json: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -331,12 +354,28 @@ try {
       console.log(JSON.stringify({ story: id, review: { ...review, at }, next }, null, 2));
       process.exit(0);
     }
-    say("REVIEW", `${id} ${agent}: ${verdict.replaceAll("-", " ")} – ${review.blocker} blocker, ${review.major} major, ${review.minor} minor, ${review.question} question`);
+    const mb = review.mergeBlocker ? `, ${review.mergeBlocker} merge blocker` : "";
+    say("REVIEW", `${id} ${agent}: ${verdict.replaceAll("-", " ")} – ${review.blocker} blocker, ${review.major} major, ${review.minor} minor, ${review.question} question${mb}`);
+    for (const p of file.possible) {
+      say("WARN", `untagged finding that looks like a merge blocker (${p.kind}): ${p.text.slice(0, 140)} – only a \`merge-blocker: <kind>\` tag blocks; it goes into the summary for the user`);
+    }
     const r = next.round;
-    if (next.action === "escalate") say("NEXT", `escalate – 'not accepted' ${next.notAccepted} times: ${SCRIPT} escalate ${id} --reason "…"`);
-    else if (next.action === "fixes") {
-      say("NEXT", `fixes – a worker pass with the findings (${r.blocker} blocker, ${r.major} major this round): ${SCRIPT} claim ${id} --continue`);
-      say("THEN", next.then === "acceptance" ? "the acceptance-tester again – its verdict was 'not accepted'" : "the merge – the acceptance stands, no second review");
+    if (next.action === "escalate") {
+      say(
+        "NEXT",
+        next.reason === "merge-blocker"
+          ? `escalate – a merge blocker is still there after the fix pass for it: ${SCRIPT} escalate ${id} --reason "merge blocker not fixed: …"`
+          : `escalate – 'not accepted' ${next.notAccepted} times: ${SCRIPT} escalate ${id} --reason "…"`,
+      );
+    } else if (next.action === "fixes") {
+      const extra = r.mergeBlocker ? `, ${r.mergeBlocker} merge blocker` : "";
+      say("NEXT", `fixes – a worker pass with the findings (${r.blocker} blocker, ${r.major} major${extra} this round): ${SCRIPT} claim ${id} --continue`);
+      say(
+        "THEN",
+        next.then === "merge"
+          ? "the merge – the acceptance stands, no second review"
+          : `${next.again.join(" and ")} again – ${r.mergeBlocker ? "a merge blocker is merged only after the reviewer who found it saw the fix" : "its verdict was 'not accepted'"}`,
+      );
     } else say("NEXT", `merge – nothing a worker has to fix${r.minor + r.question ? ` (${r.minor} minor, ${r.question} question are yours to decide)` : ""}`);
     process.exit(0);
   }
@@ -357,7 +396,7 @@ try {
       }
       const claim = state.claims[id];
       if (claim) {
-        const errs = m.mergeErrors(state, id, claim, m.mergeFacts(state, claim, workerFacts(id, state.integrationBranch).storyStatus));
+        const errs = m.mergeErrors(state, id, claim, m.mergeFacts(state, claim, workerFacts(id, state.integrationBranch).storyStatus), details);
         if (errs.length) throw new m.MarathonError(`${id} is not merged:\n${errs.map((x) => `  - ${x}`).join("\n")}`);
       }
       return { state: m.applyMerged(state, id, details, iso()), out: `${id} merged into ${state.integrationBranch}` };
@@ -460,11 +499,27 @@ try {
       return { state: next, out: next };
     });
     say("FINISHED", `${out.run} – ${out.stop!.reason}`);
+    const suspects = Object.values(out.results).filter((r) => r.outcome === "merged").reduce((n, r) => n + m.mergeSuspects(r.reviews, r).length, 0);
+    if (suspects) say("CHECK", `${suspects} possible merge blocker(s) in merged stories – the summary lists them under 'Possible merge blockers – please check'; name them in your last message to the user`);
     if (out.stop!.pr) say("PR", out.stop!.pr);
     else {
       say("NEXT", `node .claude/skills/metrics/scripts/story-metrics.ts collect --since ${out.startedAt} – the run's sessions, the open ones too; commit what it writes as 'metrics: collect'`);
       say("THEN", `${SCRIPT} summary --out .claude/state/marathon-pr.md, push ${out.integrationBranch}, open the pull request, then \`${SCRIPT} finish --pr <url>\``);
     }
+    process.exit(0);
+  }
+
+  // ---- merge-check (read-only) ----------------------------------------------
+  if (command === "merge-check") {
+    noWords();
+    const id = storyArg();
+    const details = readDetails();
+    const claim = loaded().claims[id];
+    if (!claim) throw new m.MarathonError(`${id} is not claimed – there is nothing to merge.`);
+    const errs = m.mergeBlockerErrors(id, claim, details);
+    if (errs.length) throw new m.MarathonError(`${id} is not merged – merge blockers:\n${errs.map((x) => `  - ${x}`).join("\n")}`);
+    say("MERGE-CHECK", `${id} – no merge blocker in the reviews or the details: go on with the merge`);
+    for (const x of m.mergeSuspects(claim.reviews, details)) say("POSSIBLE", `${x} – not tagged, does not block; the summary lists it under 'Possible merge blockers – please check'`);
     process.exit(0);
   }
 

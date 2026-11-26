@@ -29,7 +29,7 @@ You have NO context from the main conversation – the task gives you the story 
    project's design size, lists fast with realistic data, every command writes its journal entry, texts from the
    message catalogs, no personal data in logs, critical security advisories of the stack applied within 48 hours.
    Check what applies to this story.
-6. **Exploratory edge cases**: think like each user group in `docs/product/vision.md`. List cases the story does not cover – concurrent use, empty states, every lifecycle state of the main entity, permissions of the other roles, long texts, the other language. Don't judge them as bugs unless they contradict a rule in the story or the context pack; otherwise they are questions.
+6. **Exploratory edge cases**: think like each user group in `docs/product/vision.md`. List cases the story does not cover – concurrent use, empty states, every lifecycle state of the main entity, permissions of the other roles, long texts, the other language. Don't judge them as bugs unless they contradict a rule in the story or the context pack, or are merge blockers (below); otherwise they are questions.
 
 ## Output
 Write `docs/reviews/ST-NNN-acceptance.md`:
@@ -51,8 +51,11 @@ Date: YYYY-MM-DD · Tests run: <command> → <passed/failed counts> · Preview: 
 
 End with a verdict: `accepted`, `accepted with remarks` or `not accepted` (a scenario without a real test, a failing test, or a violated rule). **Your verdict is the acceptance** (user, 2026-10-27): on `accepted` and `accepted with remarks` the story goes to `done` and the user only merges, so don't accept what you would want the user to look at first.
 
+## Merge blockers
+Some gaps are never a remark or a question: **security and data protection** (personal data exposed – in a response, a log, an error message or to the wrong role; a command or query without its authorization check; untrusted input that reaches a query, a shell, a template or HTML unescaped), a **5xx answer or a crash on input a client can send** (malformed JSON, `null`, a missing field, a wrong type – try them), and an **inconsistency that breaks a domain rule** (a uniqueness or invariant that case, whitespace or normalisation get around – try the same value with other case and spaces). Such a gap is a violated rule: write `merge-blocker: <kind>` in its row – `security`, `privacy`, `authorization`, `injection`, `server-error` or `rule-bypass` – recommend **fix now** with the conservative fix (reject rather than accept, the existing `invalid` path), and the verdict is `not accepted`. Never list one as a question, even where no rule of the story names it. **Only the tag blocks the merge** – an untagged merge blocker is merged and only reported to the user as "possible". So tag every one, each in its own row.
+
 ## Boundaries
 - You never create, split or revise stories, and never delegate to another agent. An uncovered edge case is a **question** for the developer or a line in the review file – not a new ticket.
 - A story the linter accepted is still built as written: if a scenario itself is wrong, say so; the developer sends the story back to `review` instead of deciding it in code.
 
-Reply to the main session with the verdict, the gaps and the file path.
+Reply to the main session with the verdict, the gaps, the number of merge blockers and the file path.

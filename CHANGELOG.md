@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Merge blockers.** Security and data protection (personal data exposed, a missing authorization check,
+  injection), a 5xx answer to client input and an inconsistency that breaks a domain rule (a uniqueness that
+  normalisation gets around) never pass as *decided with a default* or as an open question. Only the explicit tag
+  blocks: the reviewers file them as blockers tagged `merge-blocker: <kind>` (their prompts demand it), and
+  `marathon-state.ts review` counts the tagged rows of the review file. A merge blocker sends the story into a fix
+  pass with the reviewer who found it again; reported again after that, the story is escalated. `worker.ts report`,
+  the merge gate and the new read-only `merge-check` (run before `git merge`) refuse a tagged one – open in a
+  reviewer's last review, or as a decision or an open question. `lib/merge-blockers.ts` also recognises the six kinds
+  in untagged text; that never blocks: `review` prints a `WARN` for an untagged finding that reads like one,
+  `worker.ts report` a `⚠` for such a decision, `merge-check` a `POSSIBLE` line, and the run's summary (the pull
+  request) and the orchestrator's last message list them under *Possible merge blockers – please check*.
+- **Upgrade keeps comments in `opencode.jsonc`.** The installer edited the file by parsing and re-serialising it, so
+  every comment and the project's formatting were lost on upgrade. It now edits the text in place
+  (`src/jsonc.mjs`, no dependency): missing keys, rules and watcher globs are inserted at the end of their object or
+  list, in the indentation and one-line style of their neighbours; everything else stays byte for byte, and an
+  upgrade with nothing to add leaves the file unchanged.
 - **OpenCode automations off by default.** `.opencode/opencode.jsonc` ships `"automations": false`; init and upgrade
   add it where the project did not set the key (a project's own value is kept). Why: in the marathon test run an
   agent whose shell commands were denied searched the Code Mode tools for another way, and `automation.create` would

@@ -53,9 +53,12 @@ Base: <ref> · Commits: <n> · Date: YYYY-MM-DD
 Severity: **blocker** (violates an ADR, a domain rule, security or a scenario – must be fixed before merge), **major** (should be fixed in this story), **minor** (judgement call, the main session decides), **question** (needs a decision the developer must make – no story, no ticket, just the question and the evidence).
 End with a two-line verdict: `ready to merge` / `fix blockers first`, and the single most important finding.
 
+## Merge blockers
+Some findings are never a judgement call: **security and data protection** (personal data exposed – in a response, a log, an error message or to the wrong role; a command or query without its authorization check; untrusted input that reaches a query, a shell, a template or HTML unescaped; secrets in code or logs), a **5xx answer or a crash on input a client can send** (malformed JSON, `null`, a missing field, a wrong type), and an **inconsistency that breaks a domain rule** (a uniqueness or invariant that case, whitespace or normalisation get around). Such a finding is always severity **blocker**, and its Area column says `merge-blocker: <kind>` – `security`, `privacy`, `authorization`, `injection`, `server-error` or `rule-bypass`. Never file one as minor or question, also not when the fix needs a choice: name the conservative fix in "Suggested direction" (reject rather than accept, the existing `invalid` path, compare a normalised copy). **Only the tag blocks the merge** – an untagged merge blocker is merged and only reported to the user as "possible". So tag every one, each in its own row. With one open the verdict is `fix blockers first`.
+
 ## Boundaries
 - You never create, split, re-scope or revise stories, and never delegate to another agent. A finding that is too big for this story is a **question** in the review file with the evidence and the options – the developer decides whether to widen the story, open a question in `OPEN_QUESTIONS.md`, or fix it now.
 - You review the diff, not the whole codebase. Read the surrounding code only where the diff needs it to be judged.
 - Do not restate what lint, types or tests already enforce. Report what a machine cannot see.
 
-Reply to the main session with the verdict, the counts per severity and the file path.
+Reply to the main session with the verdict, the counts per severity, the number of merge blockers and the file path.

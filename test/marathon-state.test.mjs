@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { marathonStateErrors } from "../.claude/lib/engineering.ts";
 import {
   acquireLock, applyClaim, applyContinue, applyEscalate, applyFailed, applyFinish, applyMerged, applyRelease, applyResume, applyReview, claimFacts,
-  MarathonError, mergeErrors, newRun, nextStep, orphanAction, parseDetails, renderSummary, reviewNext, runCounts, runName, stopReason,
+  MarathonError, mergeErrors, mergeSuspects, newRun, nextStep, orphanAction, parseDetails, renderSummary, reviewNext, runCounts, runName, stopReason,
   withStateLock, writeMarathonState,
 } from "../.claude/lib/marathon.ts";
 import { parseJsonc } from "../src/util.mjs";
@@ -30,7 +30,7 @@ const run = (limits = {}) => newRun({ run: "2026-11-26", branch: BRANCH, base: "
 const claimed = (state, id = "ST-001", type = "chore", at = T0) => applyClaim(state, { id, branch: `${id.toLowerCase()}-demo`, type }, at);
 const none = { openQuestions: [], decisions: [], notes: [] };
 const facts = (over = {}) => ({ next: { id: "ST-009", type: "chore" }, planReason: null, verify: null, usage: null, ...over });
-const review = (agent, verdict, counts = {}) => ({ agent, verdict, blocker: 0, major: 0, minor: 0, question: 0, ...counts });
+const review = (agent, verdict, counts = {}) => ({ agent, verdict, blocker: 0, major: 0, minor: 0, question: 0, mergeBlocker: 0, ...counts });
 
 test("newRun: a valid state with the default limits", () => {
   const state = run();
@@ -160,12 +160,12 @@ test("nextStep: the story in hand comes before every limit", () => {
 test("reviews: blockers send the worker back; the acceptance stands, so the merge follows the fixes", () => {
   let state = claimed(run());
   let r = applyReview(state, "ST-001", review("code-reviewer", "fix-blockers-first", { blocker: 1, minor: 2 }), T1);
-  assert.deepEqual(r.next, { action: "fixes", then: "merge", notAccepted: 0, round: { blocker: 1, major: 0, minor: 2, question: 0 } });
+  assert.deepEqual(r.next, { action: "fixes", then: "merge", again: [], reason: null, notAccepted: 0, round: { blocker: 1, major: 0, minor: 2, question: 0, mergeBlocker: 0 } });
   r = applyReview(r.state, "ST-001", review("acceptance-tester", "accepted-with-remarks", { minor: 1 }), T1);
   assert.equal(r.next.action, "fixes", "the round is judged as a whole – the code review still needs fixes");
   assert.equal(r.next.then, "merge");
   assert.equal(r.state.claims["ST-001"].phase, "review");
-  assert.deepEqual(r.next.round, { blocker: 1, major: 0, minor: 3, question: 0 });
+  assert.deepEqual(r.next.round, { blocker: 1, major: 0, minor: 3, question: 0, mergeBlocker: 0 });
 
   // The fixes pass starts a new round: with nothing recorded in it, nothing is left to fix.
   state = applyContinue(r.state, "ST-001", T2);
@@ -193,6 +193,68 @@ test("reviews: a clean round goes to the merge; minors and questions are the orc
   assert.equal(r.next.action, "merge");
   assert.throws(() => applyReview(run(), "ST-001", review("acceptance-tester", "accepted"), T1), /ST-001 is not claimed/);
   assert.throws(() => applyReview(claimed(run()), "ST-001", review("acceptance-tester", "fine"), T1), /'fine' is not a verdict/);
+});
+
+test("merge blockers: a fix pass, the reviewer who found it again, and escalation when it survives", () => {
+  // Even with an accepting verdict and no other finding, a merge blocker is fixed before the merge.
+  let r = applyReview(claimed(run(), "ST-001", "domain"), "ST-001", review("acceptance-tester", "accepted-with-remarks", { question: 1, mergeBlocker: 1 }), T1);
+  assert.deepEqual([r.next.action, r.next.then, r.next.again, r.next.round.mergeBlocker], ["fixes", "acceptance", ["acceptance-tester"], 1]);
+  r = applyReview(r.state, "ST-001", review("code-reviewer", "fix-blockers-first", { blocker: 1, mergeBlocker: 1 }), T1);
+  assert.deepEqual([r.next.action, r.next.then, r.next.again], ["fixes", "review", ["acceptance-tester", "code-reviewer"]]);
+
+  // The fix pass: the blocker is gone in the next round → merge; still there → escalate.
+  const fixed = applyContinue(r.state, "ST-001", T2);
+  const clean = applyReview(fixed, "ST-001", review("code-reviewer", "ready-to-merge"), T2);
+  const accepted = applyReview(clean.state, "ST-001", review("acceptance-tester", "accepted"), T2);
+  assert.equal(accepted.next.action, "merge");
+  const again = applyReview(fixed, "ST-001", review("code-reviewer", "ready-to-merge", { mergeBlocker: 1 }), T2);
+  assert.deepEqual([again.next.action, again.next.reason], ["escalate", "merge-blocker"]);
+
+  // A merge blocker found for the first time in a later round still gets its fix pass.
+  const late = applyReview(applyContinue(accepted.state, "ST-001", "2026-11-26T14:00:00.000Z"), "ST-001", review("acceptance-tester", "accepted", { mergeBlocker: 2 }), "2026-11-26T14:00:00.000Z");
+  assert.equal(late.next.action, "fixes");
+});
+
+test("merge gate: a reviewer's open merge blocker or a tagged decision or question refuses; a look-alike is only listed", () => {
+  const green = {
+    current: BRANCH, dirty: [], storyStatus: "done", branchExists: true, branchMerged: true,
+    verify: { branch: BRANCH, ok: true, commit: "abc", dirty: false, failed: [] }, verifyCoversMerge: true, changedSinceVerify: [],
+  };
+  let state = claimed(run(), "ST-001", "domain");
+  state = applyReview(state, "ST-001", review("acceptance-tester", "accepted"), T1).state;
+  const claim = state.claims["ST-001"];
+  assert.deepEqual(mergeErrors(state, "ST-001", claim, green, none), []);
+
+  // A reviewer's last word counts: a merge blocker in it is never merged.
+  const blocked = applyReview(state, "ST-001", review("code-reviewer", "ready-to-merge", { mergeBlocker: 1 }), T1).state;
+  assert.match(mergeErrors(blocked, "ST-001", blocked.claims["ST-001"], green, none).join("\n"), /code-reviewer's last review has 1 merge blocker\(s\).*claim ST-001 --continue/);
+
+  const tagged = {
+    ...none,
+    decisions: [{ question: "Malformed JSON body", decision: "the route answers 500 for now (merge-blocker: server-error)", why: "cheap to change" }],
+    openQuestions: [{ question: "merge-blocker: rule-bypass – the e-mail uniqueness check ignores spaces?", kind: "domain" }],
+  };
+  const errs = mergeErrors(state, "ST-001", claim, green, tagged);
+  assert.equal(errs.length, 2, errs.join("\n"));
+  assert.match(errs[0], /^decisions\[0\] \(server-error\):.*never merged as a decision or an open question/);
+  assert.match(errs[1], /^openQuestions\[0\] \(rule-bypass\)/);
+
+  // Untagged look-alikes do not block; they go to the user as possible merge blockers – in merge-check and the summary.
+  const lookalike = {
+    ...none,
+    decisions: [{ question: "Malformed JSON body", decision: "the route answers 500 for now", why: "cheap to change" }],
+    openQuestions: [{ question: "Should the e-mail uniqueness check ignore upper and lower case?", kind: "domain" }],
+    notes: ["minor skipped: names are logged on registration – out of scope"],
+  };
+  assert.deepEqual(mergeErrors(state, "ST-001", claim, green, lookalike), []);
+  const withPossible = applyReview(state, "ST-001", review("code-reviewer", "ready-to-merge", { possible: [{ kind: "privacy", text: "2 · major · the list exposes e-mail addresses" }] }), T1).state;
+  assert.deepEqual(mergeSuspects(withPossible.claims["ST-001"].reviews, lookalike).map((x) => x.split(":")[0]), [
+    "code-reviewer (privacy)", "decisions[0] (server-error)", "openQuestions[0] (rule-bypass)", "notes[0] (privacy)",
+  ]);
+  const merged = applyMerged(withPossible, "ST-001", lookalike, T2);
+  const summary = renderSummary(merged, new Map(), "");
+  assert.match(summary, /## Possible merge blockers – please check\n\n.*only a `merge-blocker: <kind>` tag blocks\.\n\n- \*\*ST-001\*\*: code-reviewer \(privacy\): 2 · major · the list exposes e-mail addresses\n- \*\*ST-001\*\*: decisions\[0\] \(server-error\)/);
+  assert.doesNotMatch(renderSummary(applyMerged(state, "ST-001", none, T2), new Map(), ""), /Possible merge blockers/);
 });
 
 test("orphaned claims: continued when the story branch exists, released when it does not", () => {
@@ -544,6 +606,50 @@ test("claim: the planned story only, on the integration branch, one at a time", 
   assert.deepEqual(readState(dir).claims, {});
 });
 
+test("review counts the tagged merge blockers of the review file and warns about untagged look-alikes", () => {
+  const dir = repo();
+  ok(ms(dir, ["start-run"]));
+  ok(ms(dir, ["claim", "ST-001"]));
+  workerPass(dir, "ST-001");
+  write(
+    dir,
+    "docs/reviews/ST-001-code-review.md",
+    "| # | Severity | Area | File:line | Finding |\n|---|---|---|---|---|\n| 1 | question | merge-blocker: server-error | src/st-001.ts:1 | `null` body → 500 |\n" +
+      "| 2 | minor | logging | src/st-001.ts:4 | names of members are logged on registration |\n",
+  );
+  const r = ok(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge", "--question", "1"], { now: T1 }));
+  assert.match(r.out, /REVIEW {7}ST-001 code-reviewer: ready to merge – 0 blocker, 0 major, 0 minor, 1 question, 1 merge blocker/);
+  assert.match(r.out, /NEXT {9}fixes – a worker pass with the findings \(0 blocker, 0 major, 1 merge blocker this round\)/);
+  assert.match(r.out, /THEN {9}code-reviewer again – a merge blocker is merged only after the reviewer who found it saw the fix/);
+  assert.match(r.out, /WARN {9}untagged finding that looks like a merge blocker \(privacy\): 2 · minor · logging · .*names of members are logged/);
+  assert.equal(readState(dir).claims["ST-001"].reviews[0].mergeBlocker, 1, "only the tagged row counts");
+  assert.equal(readState(dir).claims["ST-001"].reviews[0].possible.length, 1);
+  // Without a tag nothing blocks – no option counts merge blockers on the orchestrator's word.
+  assert.equal(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge", "--merge-blocker", "1"]).code, 2);
+  // The story metrics keep their record shape.
+  const metrics = JSON.parse(readFileSync(join(dir, "docs/stories/metrics/ST-001.json"), "utf8"));
+  assert.equal(metrics.reviews[0].mergeBlocker, undefined);
+
+  // merge-check, before `git merge`: the open blocker refuses, read-only; after the fix and a clean review it passes –
+  // unless the details carry a tagged blocker; an untagged look-alike is a POSSIBLE line.
+  const before = readFileSync(join(dir, ".claude/state/marathon.json"), "utf8");
+  const refused = ms(dir, ["merge-check", "ST-001"]);
+  assert.equal(refused.code, 1);
+  assert.match(refused.out, /ST-001 is not merged – merge blockers:\n {2}- code-reviewer's last review has 1 merge blocker/);
+  assert.equal(readFileSync(join(dir, ".claude/state/marathon.json"), "utf8"), before, "merge-check writes nothing");
+  ok(ms(dir, ["claim", "ST-001", "--continue"], { now: T2 }));
+  write(dir, "docs/reviews/ST-001-code-review.md", "No findings.\n");
+  ok(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge"], { now: T2 }));
+  assert.match(ok(ms(dir, ["merge-check", "ST-001"])).out, /MERGE-CHECK {2}ST-001 – no merge blocker/);
+  const question = JSON.stringify({ openQuestions: [{ question: "Should a body of null answer 500 or 422?", kind: "technical" }] });
+  const possible = ok(ms(dir, ["merge-check", "ST-001", "--details", "-"], { input: question }));
+  assert.match(possible.out, /POSSIBLE {5}openQuestions\[0\] \(server-error\): .* – not tagged, does not block/);
+  const tagged = JSON.stringify({ openQuestions: [{ question: "merge-blocker: server-error – a body of null answers 500", kind: "technical" }] });
+  const refusedTagged = ms(dir, ["merge-check", "ST-001", "--details", "-"], { input: tagged });
+  assert.equal(refusedTagged.code, 1);
+  assert.match(refusedTagged.out, /openQuestions\[0\] \(server-error\)/);
+});
+
 test("a story's way through the run: claim, reviews, a fixes pass, the merge gate, the result", () => {
   const dir = repo();
   ok(ms(dir, ["start-run"]));
@@ -555,7 +661,9 @@ test("a story's way through the run: claim, reviews, a fixes pass, the merge gat
   assert.match(r.out, /REVIEW {7}ST-001 code-reviewer: fix blockers first – 1 blocker, 0 major, 2 minor, 0 question/);
   assert.match(r.out, /NEXT {9}fixes – a worker pass with the findings \(1 blocker, 0 major this round\): .*claim ST-001 --continue/);
   r = ok(ms(dir, ["review", "ST-001", "acceptance-tester", "--verdict", "accepted", "--json"], { now: T1 }));
-  assert.deepEqual(JSON.parse(r.stdout).next, { action: "fixes", then: "merge", notAccepted: 0, round: { blocker: 1, major: 0, minor: 2, question: 0 } });
+  assert.deepEqual(JSON.parse(r.stdout).next, {
+    action: "fixes", then: "merge", again: [], reason: null, notAccepted: 0, round: { blocker: 1, major: 0, minor: 2, question: 0, mergeBlocker: 0 },
+  });
   assert.equal(ms(dir, ["review", "ST-001", "acceptance-tester", "--verdict", "fine"]).code, 2);
   assert.equal(ms(dir, ["review", "ST-001", "--verdict", "accepted"]).code, 2);
   assert.equal(ms(dir, ["review", "ST-002", "acceptance-tester", "--verdict", "accepted"]).code, 1);

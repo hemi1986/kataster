@@ -212,6 +212,8 @@ Say which lane you picked and why in one line.
 ## 6. Refactor
 Mark `fixes start` before the first fix and `fixes end` after the last green run of this step.
 - Fix all blockers and majors **inside this story**, and the minors you agree with; say which minors you skip and why.
+  A finding tagged `merge-blocker: <kind>` (security, privacy, authorization, injection, server-error, rule-bypass)
+  is never skipped and never handed back as a question, whatever severity it carries.
   Where a finding offers options, apply the recommended one without asking; ask only when no option is recommended.
 - **No follow-up stories from reviews.** A finding that is too large for this story is either:
   1. a **question to the developer** in the review file and in the wrap-up (with evidence and options), or
@@ -385,6 +387,18 @@ not state, and do not block because there is none – build what the story says;
 `decisions` as *"no limit – the story names none"*. When one of the four conditions fails, it is a decision for
 somebody else: `blocked`, with the question and its options.
 
+**A merge blocker is neither a default nor a question.** Security and data protection (personal data exposed in a
+response, a log or an error; a command or query without its authorization check; untrusted input that reaches a
+query, a shell or HTML unescaped), a 5xx answer to anything a client can send (malformed JSON, `null`, a missing
+field, a wrong type), and an inconsistency that breaks a domain rule (a uniqueness or invariant that case, spaces or
+normalisation get around) are fixed in this pass, with a test that pins the fix – never put into `decisions`, never
+`skipped`. The fix is the conservative one: reject rather than accept, the existing `invalid` path, compare the
+normalised copy. Only when the fix itself needs a decision the story does not own is the pass `blocked`, with the
+blocker named in the reason. Reviewers tag them `merge-blocker: <kind>`, and only a tag blocks: `worker.ts report`
+refuses a decision or a skipped finding that carries one, and the orchestrator merges none. A decision or skipped
+finding that merely reads like one is a `⚠` warning (`lib/merge-blockers.ts`) – look again: if it is a merge
+blocker, fix it; otherwise leave it, the run's summary lists it for the user to check.
+
 The repository map (`repo-map.ts`, the advisory step in `verify.ts`) and its block in `AGENTS.md` are the
 orchestrator's: a stale map is not yours to regenerate.
 
@@ -423,7 +437,7 @@ left out. It refuses a result the facts contradict (exit 1): `ready-for-review` 
 clean tree, a green verify on the branch head, nothing that would stop `done` after the merge (a scenario without
 its test, an unticked checklist item) and no open question or finding; `returned-to-review` needs the story
 in `review` and its open question; `blocked` needs only its reason. `decisions` never block. Fix what it names, or
-report `blocked`.
+report `blocked`. A decision or a skipped finding tagged `merge-blocker: <kind>` is refused as well – fix it.
 
 In a marathon run the script also keeps the report for the run (`.claude/state/marathon-reports/`), so an
 orchestrator that was cut off reads it instead of starting another pass – and it refuses a worker the run has

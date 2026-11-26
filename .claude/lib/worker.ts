@@ -15,6 +15,7 @@ import { loadBacklogConfig } from "./config.ts";
 import * as d from "./discovery.ts";
 import * as e from "./engineering.ts";
 import { changedPaths, gitRaw, isMetricsPath } from "./git.ts";
+import { describeHit, suspectHits, taggedHits } from "./merge-blockers.ts";
 
 /**
  * How a pass ends. All three are equal outcomes – `blocked` is not a failure of the worker:
@@ -315,7 +316,28 @@ export function reportErrors(f: WorkerFacts, result: WorkerResult, details: Work
   if (details.openQuestions.length) errs.push("an open question is a decision nobody made yet – the result is 'blocked', not 'ready-for-review'");
   const open = details.findings.filter((x) => x.action === "open");
   if (open.length) errs.push(`${open.length} finding(s) are still open – the result is 'blocked', not 'ready-for-review'`);
+  // A merge blocker (tagged `merge-blocker: <kind>`) is never a default and never skipped: fixed in the code with a
+  // test, or the pass is blocked.
+  const skipped = details.findings.filter((x) => x.action === "skipped");
+  for (const hit of taggedHits({ decisions: details.decisions, "skipped findings": skipped })) {
+    errs.push(
+      `${describeHit(hit)} – a merge blocker is never decided with a default or skipped: fix it in the code with a test ` +
+        "(then it is no decision – drop the entry), or report 'blocked' with it as an open question",
+    );
+  }
   return errs;
+}
+
+/**
+ * Decisions and skipped findings that look like a merge blocker without its tag. They do not stop the report; the
+ * worker takes a second look, and the run's summary lists them for the user to check.
+ */
+export function reportWarnings(result: WorkerResult, details: WorkerDetails): string[] {
+  if (result === "blocked") return [];
+  const skipped = details.findings.filter((x) => x.action === "skipped");
+  return suspectHits({ decisions: details.decisions, "skipped findings": skipped }).map(
+    (hit) => `${describeHit(hit)} – looks like a merge blocker. If it is one, fix it instead (a merge blocker is never a default); the summary lists it for the user to check`,
+  );
 }
 
 /** The report as the orchestrator reads it: the worker's judgement first, then the facts. */

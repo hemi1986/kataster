@@ -18,6 +18,7 @@ import * as d from "./discovery.ts";
 import * as e from "./engineering.ts";
 import { changedPaths, gitRaw, isMetricsPath } from "./git.ts";
 import { type KeptReport, type Lease, LEASE_FILE, readLease, reportFile, REPORTS_DIR } from "./lease.ts";
+import { describeHit, suspectHits, taggedHits } from "./merge-blockers.ts";
 import type { Entry, MetricsFile, ReviewRecord, ReviewVerdict } from "./metrics.ts";
 import { REVIEW_VERDICTS, totalTokens } from "./metrics.ts";
 import type { WorkerFacts } from "./worker.ts";
@@ -445,7 +446,7 @@ export interface MergeFacts {
 }
 
 /** Why the story is not merged as far as git and the last verify run can tell; empty means `merged` may be recorded. */
-export function mergeErrors(state: e.MarathonState, id: string, claim: e.MarathonClaim, f: MergeFacts): string[] {
+export function mergeErrors(state: e.MarathonState, id: string, claim: e.MarathonClaim, f: MergeFacts, details?: Details): string[] {
   const errs: string[] = [];
   const branch = state.integrationBranch;
   if (f.current !== branch) errs.push(`the checkout is on '${f.current ?? "?"}', not on the integration branch '${branch}'`);
@@ -464,9 +465,55 @@ export function mergeErrors(state: e.MarathonState, id: string, claim: e.Maratho
         "The fast lane is for chore and task; run the reviews (step 4) and record them with `marathon-state.ts review`",
     );
   }
+  errs.push(...mergeBlockerErrors(id, claim, details));
   if (f.repoMapStale) errs.push("the repository map is stale after the merge – run `node .claude/skills/adopt/scripts/repo-map.ts` and commit it with the bookkeeping");
   if (f.dirty.length) errs.push(`uncommitted changes: ${f.dirty.slice(0, 5).join(", ")}${f.dirty.length > 5 ? ", …" : ""} – commit them as '${id}: done'`);
   return errs;
+}
+
+/**
+ * Merge blockers (`lib/merge-blockers.ts`) are never merged: not open in a reviewer's last review, and not in the
+ * merge's details as a decision or an open question carrying the `merge-blocker: <kind>` tag. Either way the way out
+ * is a fix pass and the reviewer again – and when the blocker survives that, the escalation. Only tags count here;
+ * what merely looks like a merge blocker is `mergeSuspects`, shown and never refused.
+ */
+export function mergeBlockerErrors(id: string, claim: e.MarathonClaim, details?: Details): string[] {
+  const errs: string[] = [];
+  const latest = new Map<string, e.MarathonReview>();
+  for (const r of claim.reviews ?? []) latest.set(r.agent, r);
+  for (const [agent, r] of latest) {
+    if ((r.mergeBlocker ?? 0) > 0) {
+      errs.push(
+        `${agent}'s last review has ${r.mergeBlocker} merge blocker(s) – they are never merged: a fix pass ` +
+          `(claim ${id} --continue), then ${agent} again; still there → escalate`,
+      );
+    }
+  }
+  if (details) {
+    for (const hit of taggedHits({ decisions: details.decisions, openQuestions: details.openQuestions })) {
+      errs.push(
+        `${describeHit(hit)} – a merge blocker is never merged as a decision or an open question: a fix pass with it ` +
+          `(claim ${id} --continue), then the reviewer again; still open after that → escalate`,
+      );
+    }
+  }
+  return errs;
+}
+
+/**
+ * What looks like a merge blocker without the tag: untagged findings the reviewers' files hold (recorded with each
+ * review) and decisions, open questions and notes the text net recognises. Never refuses – the user checks them.
+ */
+export function mergeSuspects(reviews: readonly e.MarathonReview[] | undefined, details?: Partial<Details>): string[] {
+  const latest = new Map<string, e.MarathonReview>();
+  for (const r of reviews ?? []) latest.set(r.agent, r);
+  const fromReviews = [...latest.values()].flatMap((r) => (r.possible ?? []).map((p) => `${r.agent} (${p.kind}): ${p.text}`));
+  const fromDetails = suspectHits({
+    decisions: details?.decisions,
+    openQuestions: details?.openQuestions,
+    notes: (details?.notes ?? []).map((note) => ({ note })),
+  }).map(describeHit);
+  return [...fromReviews, ...fromDetails];
 }
 
 /** The story is in the integration branch and `done` there. Ends the claim and the series of failures. */
@@ -527,37 +574,60 @@ export interface ReviewInput {
   major: number;
   minor: number;
   question: number;
+  /** Findings tagged `merge-blocker: <kind>` in the review file (`lib/merge-blockers.ts`). */
+  mergeBlocker: number;
+  /** Findings that look like merge blockers but carry no tag – shown for a look, never blocking. */
+  possible?: e.PossibleMergeBlocker[];
 }
 
-const needsFixes = (r: e.MarathonReview): boolean => r.verdict === "not-accepted" || r.verdict === "fix-blockers-first" || r.blocker + r.major > 0;
+const blocks = (r: e.MarathonReview): boolean => (r.mergeBlocker ?? 0) > 0;
+const needsFixes = (r: e.MarathonReview): boolean =>
+  r.verdict === "not-accepted" || r.verdict === "fix-blockers-first" || r.blocker + r.major > 0 || blocks(r);
 
 /**
  * What follows the reviews of the current round (the reviews since the last worker pass started):
- *   escalate – the story was `not accepted` twice; a third round is the user's decision
- *   fixes    – a reviewer does not accept, or there are blockers or majors: a worker pass with the findings.
- *              `then` says what follows it – the acceptance tester again when it did not accept, otherwise the merge
+ *   escalate – the story was `not accepted` twice, or a reviewer reports a merge blocker again after the fix pass
+ *              for its last one; a further round is the user's decision (`reason` says which)
+ *   fixes    – a reviewer does not accept, there are blockers or majors, or a merge blocker: a worker pass with the
+ *              findings. `again` names the reviewers who run again before the merge – the acceptance tester when it
+ *              did not accept, every reviewer who reported a merge blocker; `then` is `acceptance` when that is the
+ *              acceptance tester alone, `review` for more, `merge` for none
  *   merge    – nothing a worker has to fix; minors and questions are the orchestrator's call
  */
 export interface ReviewNext {
   action: "escalate" | "fixes" | "merge";
-  then: "acceptance" | "merge" | null;
+  then: "acceptance" | "review" | "merge" | null;
+  /** Reviewers who review again after the fix pass, before the merge. */
+  again: string[];
+  /** Why the story escalates; null otherwise. */
+  reason: "not-accepted" | "merge-blocker" | null;
   notAccepted: number;
   /** Findings of the round, summed over its reviewers. */
-  round: { blocker: number; major: number; minor: number; question: number };
+  round: { blocker: number; major: number; minor: number; question: number; mergeBlocker: number };
 }
 
 export function reviewNext(claim: e.MarathonClaim): ReviewNext {
   const all = claim.reviews ?? [];
   const since = claim.passStart ?? claim.start;
   const round = all.filter((r) => r.at >= since);
-  const sum = { blocker: 0, major: 0, minor: 0, question: 0 };
-  for (const r of round) for (const k of ["blocker", "major", "minor", "question"] as const) sum[k] += r[k];
-  const notAccepted = all.filter((r) => r.verdict === "not-accepted").length;
-  if (notAccepted >= MAX_NOT_ACCEPTED) return { action: "escalate", then: null, notAccepted, round: sum };
-  if (round.some(needsFixes)) {
-    return { action: "fixes", then: round.some((r) => r.verdict === "not-accepted") ? "acceptance" : "merge", notAccepted, round: sum };
+  const sum = { blocker: 0, major: 0, minor: 0, question: 0, mergeBlocker: 0 };
+  for (const r of round) {
+    for (const k of ["blocker", "major", "minor", "question"] as const) sum[k] += r[k];
+    sum.mergeBlocker += r.mergeBlocker ?? 0;
   }
-  return { action: "merge", then: null, notAccepted, round: sum };
+  const notAccepted = all.filter((r) => r.verdict === "not-accepted").length;
+  const base = { again: [] as string[], notAccepted, round: sum };
+  // One fix pass per merge blocker: a reviewer who reported one and, after the fix pass, reports one again → the user
+  // decides. A reviewer's first merge blocker in a later round still gets its fix pass.
+  const before = (agent: string) => all.filter((r) => r.agent === agent && r.at < since).at(-1);
+  if (round.some((r) => blocks(r) && before(r.agent) && blocks(before(r.agent)!))) return { ...base, action: "escalate", then: null, reason: "merge-blocker" };
+  if (notAccepted >= MAX_NOT_ACCEPTED) return { ...base, action: "escalate", then: null, reason: "not-accepted" };
+  if (round.some(needsFixes)) {
+    const again = [...new Set(round.filter((r) => r.verdict === "not-accepted" || blocks(r)).map((r) => r.agent))];
+    const then = !again.length ? "merge" : again.length === 1 && again[0] === "acceptance-tester" ? "acceptance" : "review";
+    return { ...base, action: "fixes", then, again, reason: null };
+  }
+  return { ...base, action: "merge", then: null, reason: null };
 }
 
 /** Records a review on the claim and moves the claim to where the round now stands. */
@@ -737,6 +807,15 @@ export function renderSummary(state: e.MarathonState, titles: Map<string, string
   if (!questions.length) out.push("None.", "");
   else {
     for (const { story, q } of questions) out.push(`- **${story}** (${q.kind}): ${q.question}`);
+    out.push("");
+  }
+
+  // What looks like a merge blocker without the tag – merged all the same, for the user to check.
+  const suspects = merged.flatMap(([id, r]) => mergeSuspects(r.reviews, r).map((text) => ({ story: id, text })));
+  if (suspects.length) {
+    out.push("## Possible merge blockers – please check", "");
+    out.push("Untagged findings, decisions or questions that read like a security, data-protection, 5xx or domain-rule problem. Nothing blocked them – only a `merge-blocker: <kind>` tag blocks.", "");
+    for (const { story, text } of suspects) out.push(`- **${story}**: ${text}`);
     out.push("");
   }
 

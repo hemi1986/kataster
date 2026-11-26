@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { addProperty, appendItems, nodeValue, parseTree } from "./jsonc.mjs";
 import {
   exists, mergeUnique, parseJsonc, read, readJson, relPosix, sha, timestamp, toPosix, upsertBlock, write, writeJson,
 } from "./util.mjs";
@@ -339,33 +340,44 @@ export class Installer {
       this.put(path, template);
       return;
     }
-    const existing = parseJsonc(read(path));
     const ours = parseJsonc(template) ?? {};
-    if (!existing) {
+    let text = read(path);
+    let existing;
+    try {
+      existing = nodeValue(parseTree(text));
+    } catch {
+      existing = undefined;
+    }
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
       this.record("skip", path, "existing config is not plain JSON/JSONC – left untouched");
       this.skipped.push(path);
       return;
     }
-    const merged = {
-      ...ours,
-      ...existing,
-      watcher: {
-        ...(ours.watcher ?? {}),
-        ...(existing.watcher ?? {}),
-        ignore: mergeUnique(ours.watcher?.ignore ?? [], existing.watcher?.ignore ?? []),
-      },
-    };
+    // The project's file is edited in place: our keys and rules are added where missing, everything else – comments,
+    // order, formatting – stays as the project wrote it.
     // `automations: false` comes from ours unless the project set the key itself – an upgrade never turns them back on
     // or off against the project's choice.
+    for (const [key, value] of Object.entries(ours)) {
+      if (key !== "permissions") text = addProperty(text, [], key, value);
+    }
+    const watcher = existing.watcher;
+    if (watcher && typeof watcher === "object" && !Array.isArray(watcher)) {
+      for (const [key, value] of Object.entries(ours.watcher ?? {})) text = addProperty(text, ["watcher"], key, value);
+      if (Array.isArray(watcher.ignore)) {
+        text = appendItems(text, ["watcher", "ignore"], (ours.watcher?.ignore ?? []).filter((g) => !watcher.ignore.includes(g)));
+      }
+    }
     // Permission rules: the project's own first, ours appended when missing. OpenCode applies the last matching rule,
     // so a project's catch-all `ask` does not prompt for the workflow scripts – like Claude Code's allow list. A
     // project that writes something other than a rule list keeps it untouched.
-    if (existing.permissions === undefined || Array.isArray(existing.permissions)) {
+    if (existing.permissions === undefined) {
+      text = addProperty(text, [], "permissions", OPENCODE_ALLOW);
+    } else if (Array.isArray(existing.permissions)) {
       const key = (rule) => [rule?.action, rule?.resource, rule?.effect].join("\0");
-      const have = new Set((existing.permissions ?? []).map(key));
-      merged.permissions = [...(existing.permissions ?? []), ...OPENCODE_ALLOW.filter((rule) => !have.has(key(rule)))];
+      const have = new Set(existing.permissions.map(key));
+      text = appendItems(text, ["permissions"], OPENCODE_ALLOW.filter((rule) => !have.has(key(rule))));
     }
-    this.put(path, `${JSON.stringify(merged, null, 2)}\n`, { merge: true });
+    this.put(path, text, { merge: true });
   }
 
   mergeAgentsFile(profile) {
