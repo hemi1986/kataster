@@ -3,7 +3,8 @@
 This repository is the **toolkit**, not an installation of it. `.claude/`, `.opencode/` and `templates/` are the
 payload that `npx kataster init` copies into a target repository.
 
-- **Installer:** `src/cli.mjs` (commands, prompts), `src/install.mjs` (copy, merge, manifest, upgrade),
+- **Installer:** `src/cli.mjs` (commands, prompts), `src/install.mjs` (copy, merge, manifest, upgrade), `src/jsonc.mjs`
+  (edits an existing `opencode.jsonc` in place – comments and formatting stay),
   `src/detect.mjs` (stack detection), `src/repo.mjs` (monorepo tooling and workspaces), `src/util.mjs`.
 - **Payload:** `.claude/` (skills, agents, hooks, lib, settings), `.opencode/` (commands, agents, plugin),
   `templates/` (docs skeleton, project profile defaults, conventions template).
@@ -68,6 +69,11 @@ The workflow is spec-driven and mechanical, not a simulated organisation:
 - **Decided with a default:** a worker settles a technical detail the spec leaves open with the conservative default
   and reports it in `decisions` (never blocking); a domain gap stays `blocked`. The rule lives in the implement
   skill's worker mode; the PR summary lists the decisions for the user.
+- **Merge blockers:** security and data protection (personal data exposed, missing authorization, injection), a 5xx
+  answer to client input and an inconsistency that breaks a domain rule are never a default, a skipped finding or an
+  open question (`lib/merge-blockers.ts`). `worker.ts report` refuses them as decisions, the reviewers tag them
+  `merge-blocker: <kind>`, `marathon-state.ts review` counts the tags; one fix pass with the reviewer again, then
+  escalation. `merge-check` (before `git merge`) and `result … merged` refuse an open one.
 - **Reviewers report, never plan:** `code-reviewer` and `acceptance-tester` create no stories. Findings are fixed in
   the story or handed back as open questions.
 - **Story metrics:** `/shape`, `/feature`, `/review-stories` and `/implement` mark phases with

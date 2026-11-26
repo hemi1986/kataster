@@ -201,6 +201,8 @@ export interface MarathonReview {
   major: number;
   minor: number;
   question: number;
+  /** Findings of the merge-blocker kinds (`lib/merge-blockers.ts`); missing in states written before they were counted. */
+  mergeBlocker?: number;
   at: string;
 }
 
@@ -330,7 +332,7 @@ export function marathonStateErrors(raw: unknown): string[] {
   const count = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0;
   const amount = (v: unknown): boolean => v === null || (typeof v === "number" && Number.isFinite(v) && v > 0);
   const reviews = (v: unknown): boolean =>
-    v === undefined || (Array.isArray(v) && v.every((r) => obj(r) && str(r.agent) && str(r.verdict) && str(r.at) && ["blocker", "major", "minor", "question"].every((k) => count(r[k]))));
+    v === undefined || (Array.isArray(v) && v.every((r) => obj(r) && str(r.agent) && str(r.verdict) && str(r.at) && ["blocker", "major", "minor", "question"].every((k) => count(r[k])) && (r.mergeBlocker === undefined || count(r.mergeBlocker))));
   if (!obj(raw)) return ["the state is not a JSON object"];
   if (raw.version !== 1) errs.push(`version must be 1, is ${JSON.stringify(raw.version)}`);
   if (!str(raw.run)) errs.push("run (the run ID) is missing");

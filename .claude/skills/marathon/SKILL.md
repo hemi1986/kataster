@@ -110,13 +110,16 @@ Per reviewer:
 1. `node .claude/skills/metrics/scripts/story-metrics.ts mark ST-NNN review-<agent> start`, right before you start it.
 2. Start the reviewer with the story ID, the base ref (the integration branch), the context pack command and
    "Preview: none". Add: *end your reply with the number of findings per severity – blocker, major, minor,
-   question.* The acceptance tester counts a scenario without a real test, a failing test or a violated rule as
+   question – and the number of merge blockers.* The acceptance tester counts a scenario without a real test, a failing test or a violated rule as
    blocker, a definition-of-done gap or a "fix now" edge case as major, a remark as minor.
 3. `… mark ST-NNN review-<agent> end` once its review file is there, then record the review:
 
    ```bash
-   node .claude/skills/marathon/scripts/marathon-state.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n>
+   node .claude/skills/marathon/scripts/marathon-state.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n> --merge-blocker <n>
    ```
+
+   `--merge-blocker` counts every finding that is a merge blocker (below), whatever severity the reviewer gave it;
+   the script also counts the `merge-blocker: <kind>` tags in the review file and takes the larger number.
 
    Verdicts: `accepted`, `accepted-with-remarks`, `not-accepted` (acceptance tester); `ready-to-merge`,
    `fix-blockers-first` (code reviewer). The same record goes into the story's metrics.
@@ -129,21 +132,30 @@ follow the `NEXT` of the **last** `review` call:
   `notes` and `openQuestions` of step 5.
 - **`fixes`** → `marathon-state.ts claim ST-NNN --continue`, then continue the worker with the task from step 2 plus:
   *Continuation – fix the findings in `docs/reviews/ST-NNN-*.md`*, the minors you want fixed as well, and the ones
-  to skip. Read its report as in step 3. `ready-for-review` → what `THEN` said: the acceptance tester again (sub-steps
-  1–3, a new round) or step 5.
+  to skip. Read its report as in step 3. `ready-for-review` → what `THEN` said: the reviewers it names again
+  (sub-steps 1–3, a new round) or step 5.
 
   **Reviewer questions never go into a worker's task.** A question (severity `question`) is not a finding to fix:
   it travels with you into the `openQuestions` of step 5 – a worker that is handed one has to report `blocked`, and
   the story is lost for a question that blocks nothing. For a finding that needs a technical choice, name the
   default you want (*use the existing `invalid` path, 422*) instead of asking the worker to decide or to block.
-- **`escalate`** → the story was `not accepted` twice: `escalate` with the gaps that remain as the reason, back to
-  the integration branch, step 1.
+
+  **Merge blockers are the exception – they are never a question, a decision or a skipped minor.** Security and
+  data protection (personal data exposed, a missing authorization check, injection), a 5xx answer to client input,
+  and an inconsistency that breaks a domain rule (a uniqueness that normalisation gets around) go into the worker's
+  task as findings to fix, whatever severity or form the reviewer gave them, with the conservative fix named. The
+  reviewer who found one runs again after the fix pass; reports one again → `escalate`.
+- **`escalate`** → the story was `not accepted` twice, or a merge blocker survived its fix pass: `escalate` with what
+  remains as the reason, back to the integration branch, step 1.
 
 ### 5. Integrate
 
 Every sub-step is safe to repeat; after a resume skip what is already done.
 
-1. `… story-metrics.ts mark ST-NNN integration start`, `git switch <integration branch>`,
+1. Write the details file of sub-step 6 now and check it before anything is merged:
+   `node .claude/skills/marathon/scripts/marathon-state.ts merge-check ST-NNN --details .kataster/details/ST-NNN-merged.json`.
+   Refused → a merge blocker is open: back to step 4 **`fixes`** with it, nothing merged.
+   Then `… story-metrics.ts mark ST-NNN integration start`, `git switch <integration branch>`,
    `git merge --no-ff <story branch> -m "Merge ST-NNN: <title>"`.
 2. `mark ST-NNN verify start`, `node .claude/skills/implement/scripts/verify.ts` (with `--e2e` when browser tests
    exist), `mark ST-NNN verify end`.
@@ -162,7 +174,9 @@ Every sub-step is safe to repeat; after a resume skip what is already done.
 6. Record the merge – it is checked against git, the verify run, the reviews (a `domain`, `tech-task` or `spike`
    story needs an accepting `acceptance-tester`; only `chore` and `task` are fast) and the repository map. The
    details file `.kataster/details/ST-NNN-merged.json` holds **this story's** notes, questions and decisions only –
-   never those of a story that was escalated before it:
+   never those of a story that was escalated before it. A merge blocker is none of them: the gate refuses a
+   decision or an open question that names one, and an open merge blocker in a reviewer's last review – go back to
+   `fixes` (`claim ST-NNN --continue`) instead:
 
    ```json
    { "notes": ["<ADR 0007 proposed: …>", "<new term: …>", "<minor skipped: … – why>"],

@@ -332,6 +332,31 @@ test("planStart and reportErrors decide from the facts alone", () => {
   assert.ok(errs.some((e) => /no commit/.test(e)));
 });
 
+test("reportErrors: a merge blocker is never a decision with a default and never a skipped finding", () => {
+  const green = {
+    story: "ST-012", title: "T", type: "domain", storyStatus: "in-progress", baseStatus: "ready", base: "main", baseCommit: "abc1234",
+    branch: "st-012-x", branchExists: true, current: "st-012-x", head: "def5678", commits: [{ sha: "def5678", subject: "ST-012: x" }],
+    changedFiles: ["src/x.ts"], uncommitted: [], verify: { status: "green", at: null, commit: "def5678", failed: [] }, reviews: [],
+    unlinked: null, doneBlockers: [],
+  };
+  const judged = (over) => ({ reason: "", newTerms: [], adrProposals: [], openQuestions: [], decisions: [], findings: [], ...over });
+  const ordinary = { question: "Order of the list", decision: "by inventory number", why: "the convention for lists" };
+  assert.deepEqual(reportErrors(green, "ready-for-review", judged({ decisions: [ordinary] })), []);
+
+  const errs = reportErrors(green, "ready-for-review", judged({
+    decisions: [ordinary, { question: "Names compared for uniqueness", decision: "compared after trimming spaces, case kept", why: "cheap" }],
+    findings: [
+      { finding: "the member list shows every e-mail address to anonymous callers (exposed)", action: "skipped" },
+      { finding: "naming of the helper", action: "skipped" },
+    ],
+  }));
+  assert.equal(errs.length, 2, errs.join("\n"));
+  assert.match(errs[0], /^decisions\[1\] \(rule-bypass\):.*never decided with a default or skipped/);
+  assert.match(errs[1], /^skipped findings\[0\] \(privacy\)/);
+  // `blocked` with the blocker as an open question stays possible – a pass can always say that it is stuck.
+  assert.deepEqual(reportErrors(green, "blocked", judged({ reason: "the 500 on a malformed body cannot be fixed without the parser change in ST-003" })), []);
+});
+
 // --------------------------------------------------------------------------
 // what a worker relies on around it
 // --------------------------------------------------------------------------

@@ -15,6 +15,7 @@ import { loadBacklogConfig } from "./config.ts";
 import * as d from "./discovery.ts";
 import * as e from "./engineering.ts";
 import { changedPaths, gitRaw, isMetricsPath } from "./git.ts";
+import { blockerHits, describeHit } from "./merge-blockers.ts";
 
 /**
  * How a pass ends. All three are equal outcomes – `blocked` is not a failure of the worker:
@@ -315,6 +316,14 @@ export function reportErrors(f: WorkerFacts, result: WorkerResult, details: Work
   if (details.openQuestions.length) errs.push("an open question is a decision nobody made yet – the result is 'blocked', not 'ready-for-review'");
   const open = details.findings.filter((x) => x.action === "open");
   if (open.length) errs.push(`${open.length} finding(s) are still open – the result is 'blocked', not 'ready-for-review'`);
+  // A merge blocker is never a default and never skipped: fixed in the code with a test, or the pass is blocked.
+  const skipped = details.findings.filter((x) => x.action === "skipped");
+  for (const hit of blockerHits({ decisions: details.decisions, "skipped findings": skipped })) {
+    errs.push(
+      `${describeHit(hit)} – a merge blocker is never decided with a default or skipped: fix it in the code with a test ` +
+        "(then it is no decision – drop the entry), or report 'blocked' with it as an open question",
+    );
+  }
   return errs;
 }
 
