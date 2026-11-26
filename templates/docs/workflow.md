@@ -38,6 +38,7 @@ is what to read when you are unsure where something belongs.
 | Backlog mirror (with a tracker) | `docs/stories/` | `/backlog-sync` |
 | Backlog (generated!) | `docs/stories/BACKLOG.md` | hook – never edit manually |
 | Open questions | `docs/stories/OPEN_QUESTIONS.md` | everyone |
+| Story metrics (append-only) | `docs/stories/metrics/ST-NNN.json`, `feature-<slug>.json` | `story-metrics.ts mark … end` and the session hooks – never by hand; `report` derives cost and spec share |
 | Reviews | `docs/reviews/` | spec linter and `acceptance-tester`/`code-reviewer` (domain lane only; findings, no stories) |
 | Engineering conventions, seam catalog | `docs/engineering/conventions.md` | written after the foundation, user approves |
 | Application code and tests | `repo.codeRoots` in `.claude/project.json` | `/implement` |

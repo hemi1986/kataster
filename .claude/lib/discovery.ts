@@ -135,6 +135,20 @@ export const isFastLane = (meta: Obj): boolean => FAST_TYPES.has(String(meta.typ
 /** A story with a frontend part: the explicit `ui: true` flag, or the legacy `ui` label. */
 export const isUi = (meta: Obj): boolean => meta.ui === true || list(meta.labels).includes("ui");
 
+const FEATURE_LABEL_RE = /^feature:(.+)$/;
+/** The `feature:<slug>` labels' slugs. */
+export const featureLabels = (meta: Obj): string[] =>
+  list(meta.labels).map((l) => FEATURE_LABEL_RE.exec(String(l))?.[1]).filter((s): s is string => Boolean(s));
+/**
+ * The feature a story was derived from: the `feature` field, or – for stories written before the field existed –
+ * its single `feature:<slug>` label. null when it has neither.
+ */
+export function featureOf(meta: Obj): string | null {
+  if (typeof meta.feature === "string" && meta.feature) return meta.feature;
+  const labels = [...new Set(featureLabels(meta))];
+  return labels.length === 1 ? labels[0] : null;
+}
+
 /** Resolves symlinks where possible so paths from hooks and from ROOT compare equal. */
 export function realPath(p: string): string {
   try {
@@ -824,6 +838,17 @@ export function validateStories(report: Report, only: string | null = null, leni
     if ((status === "draft" || status === "review") && sourceRefs.length === 0) {
       const trigger = research.researchGateRequired(m, researchCfg);
       if (trigger) r.warn(where, `${trigger} requires at least one 'sources:' entry before ready-for-human-review`);
+    }
+
+    // The feature reference: `feature: <slug>` is the field, the `feature:<slug>` label its tracker-visible twin.
+    // The metrics report splits a feature's spec cost across the stories that point to it.
+    const labelSlugs = [...new Set(featureLabels(m))];
+    if (labelSlugs.length > 1) r.error(where, `more than one feature label (${labelSlugs.map((x) => `feature:${x}`).join(", ")}) – a story belongs to one feature`);
+    if (typeof m.feature === "string" && labelSlugs.length && !labelSlugs.includes(m.feature)) {
+      r.error(where, `feature '${m.feature}' does not match the label 'feature:${labelSlugs[0]}'`);
+    }
+    if (m.feature === undefined && labelSlugs.length === 1) {
+      r.warn(where, `label 'feature:${labelSlugs[0]}' without the field – add 'feature: ${labelSlugs[0]}'`);
     }
 
     if (m.size === "XL") r.warn(where, "size XL – split the story");

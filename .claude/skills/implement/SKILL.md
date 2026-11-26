@@ -34,19 +34,29 @@ how commands and read models are built, and the **seam catalog**.
 Project profile: `.claude/project.json` – default branch, code roots, commands, preview provider, pull-request tool.
 Read it instead of assuming `main`, `npm` or GitHub.
 
+**Metrics.** Mark each step with `node .claude/skills/metrics/scripts/story-metrics.ts mark ST-NNN <phase> start|end`,
+each marker as its own command (the `metrics` skill explains it; the hooks add who you are). Phases: `kontext`
+(1.3–1.4), `testplan` (2),
+`characterization` (2a), `implementierung` (3), `verify` (4), `review-<agent>` per reviewer (5), `fixes` (6),
+`merge` (7, from the pull request to the user's merge). A skipped step gets no marker; both lanes mark the steps they
+run. Commit `docs/stories/metrics/` with the step's commit – never edit those files.
+
 ## 1. Prepare
 1. Working tree clean, on the default branch (`repo.defaultBranch`), up to date (`git pull`). Otherwise stop and tell
-   the user.
+   the user. Changes only under `docs/stories/metrics/` (metrics an earlier session collected) do not count: commit
+   them on the story branch as `metrics: collect` before `ST-NNN: start`.
 2. With a tracker (`backlog.provider` ≠ `local`), pull first (`/backlog-sync pull`) and check that the story has its
    `external` key – an unlinked story never reaches `ready`, so stop and report instead of implementing a stale mirror.
-3. `node .claude/skills/implement/scripts/story-context.ts ST-NNN` – the context pack: story, exact test titles,
-   dependencies, events/commands/rules/invariants, glossary, data model, ADRs, research sources. Read it completely;
+3. Mark `kontext start`, then `node .claude/skills/implement/scripts/story-context.ts ST-NNN` – the context pack:
+   story, exact test titles, dependencies, events/commands/rules/invariants, glossary, data model, ADRs, research
+   sources. Read it completely;
    it is your source, not memory. When a scenario depends on a cited finding, read the research file listed under
    `## Research sources` – findings are evidence, not a specification. If an aggregate in the pack has
    `status: unresolved`, stop: the consistency boundary is not settled, so the story goes back to `review` instead
    of being decided in code.
 4. `git switch -c st-NNN-<slug>` (slug from the file name), then
-   `node .claude/skills/implement/scripts/story-status.ts ST-NNN in-progress` and commit `ST-NNN: start`.
+   `node .claude/skills/implement/scripts/story-status.ts ST-NNN in-progress`, mark `kontext end` and commit
+   `ST-NNN: start`.
 5. **Pick the lane** and say it in one line: fast lane for `chore`/`task`, domain lane otherwise. The fast lane is
    a shortcut for non-domain work, never a way to skip a risk review.
 
@@ -71,6 +81,8 @@ follow it.
 
 ## 2. Test plan
 
+Mark `testplan start` before and `testplan end` after the plan.
+
 **Domain lane.** Call the `skill` tool for `tdd` (and `codebase-design` when a new module or interface is involved).
 Show one table and go on to step 3 without waiting:
 
@@ -90,7 +102,8 @@ not create `ST-NNN:` test titles.
 
 ## 2a. Characterization net (domain lane, existing behaviour)
 
-Before the first red test, find out whether the affected paths already have a net:
+Before the first red test, find out whether the affected paths already have a net (mark `characterization start`
+before the check, `characterization end` after the last characterization commit):
 
 ```bash
 node .claude/skills/implement/scripts/characterize.ts --story ST-NNN
@@ -122,6 +135,8 @@ story carries the label `refactor`), write the characterization net first; a ref
 
 ## 3. Red → green (domain) / implement (fast)
 
+Mark `implementierung start` before the first test or change, `implementierung end` after the last green commit.
+
 **Domain lane:**
 - Per row: write the test (title exactly `ST-NNN: <scenario title>`), run it and see it fail for the right reason,
   write the minimal code to pass, run it green. Commit: `ST-NNN: <scenario title>`.
@@ -144,7 +159,8 @@ gate: `node .claude/skills/implement/scripts/affected.ts --changed <files>` (or 
 execute the printed command. It follows shared-library dependents; `verify.ts` still runs everything at the end.
 
 ## 4. Verify
-`node .claude/skills/implement/scripts/verify.ts` (with `--e2e` when browser tests exist) must be green: lint incl.
+Mark `verify start`, run `node .claude/skills/implement/scripts/verify.ts` (with `--e2e` when browser tests exist)
+until it is green, mark `verify end`. It must be green: lint incl.
 module boundaries, type check, tests, events and stories valid, scenario ↔ test and domain ID traceability. Language
 warnings: fix or justify.
 
@@ -179,12 +195,17 @@ changed; no input handling (no request handler, form action); no migration; no n
 - Only when the **diff** touches input handling, login/roles/session, uploads or files, or security headers/CSP: ask
   the `code-reviewer` for a security-focused pass.
 
+Mark `review-<agent> start` right before you start each reviewer (`review-code-reviewer`,
+`review-acceptance-tester`; started together, both run at once) and `review-<agent> end` once its review file is
+there. A second round is a second pass.
+
 Both reviewers report findings and never create stories. A finding is **fixed in this story** or becomes an open
 question to the developer (step 6) – there is no follow-up ticket.
 
 Say which lane you picked and why in one line.
 
 ## 6. Refactor
+Mark `fixes start` before the first fix and `fixes end` after the last green run of this step.
 - Fix all blockers and majors **inside this story**, and the minors you agree with; say which minors you skip and why.
   Where a finding offers options, apply the recommended one without asking; ask only when no option is recommended.
 - **No follow-up stories from reviews.** A finding that is too large for this story is either:
@@ -221,8 +242,9 @@ the user only merges.
    links to the story and the review files (if any), the acceptance verdict (domain), the preview URL, remaining
    minors/questions, and anything the user must approve (a conventions change). (No `gh` CLI, or it isn't
    authenticated: push and give the user the compare URL `git push` prints.)
-4. **The user merges** – on the preview if they want to look first. Afterwards: back to the default branch and
-   `git pull`.
+4. Mark `merge start` once the pull request is open. **The user merges** – on the preview if they want to look
+   first. When they say it is merged: back to the default branch, `git pull`, mark `merge end` (the waiting time is
+   the gate; its entry is committed with the next story's `metrics: collect`).
 
 ## 8. Wrap-up
 Summarize in a few lines: lane taken, scenarios implemented or task completed, review findings fixed/skipped, open

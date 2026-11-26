@@ -8,11 +8,19 @@ argument-hint: "<idea | ST-NNN | #issue | PROJ-123 | URL> [--prototype[=ui|logic
 # New Feature
 
 The argument is a feature idea, an existing story or a ticket. Empty → ask the user for it first.
-Pick a short kebab-case slug for it (e.g. `order-photos`); stories get the label `feature:<slug>`.
+Pick a short kebab-case slug for it (e.g. `order-photos`); stories get the field `feature: <slug>` and the label
+`feature:<slug>`.
 `--prototype[=ui|logic]` is a flag, not part of the idea: strip it before resolving a reference. It asks for a
 prototype before the stories are written; without a branch the `prototype` skill picks it from the question.
 `--research` is a flag too: strip it before resolving a reference. It forces the research step for a topic the
 trigger list in step 2 does not catch.
+
+**Metrics.** Mark each step on the feature with
+`node .claude/skills/metrics/scripts/story-metrics.ts mark feature:<slug> <phase> start|end`, each marker as its own
+command (the `metrics` skill explains it): `grilling` (steps 1–2b), `event-storming` (3), `domain-architect` (4),
+`story-writing` (5); step 6 marks itself through `review-stories`. The stories' `feature: <slug>` is how the
+report shares this cost. On the `continue-story` route, use the story's feature (or `ST-NNN` when it has none); the
+bug path has no slug – mark `story-writing` and `review-stories` on the bug story once it exists.
 
 ## 0. Intake – when the argument is a reference
 
@@ -59,7 +67,7 @@ ADRs and `docs/product/ux-guidelines.md` first.
 Do not run an event storming for a bug and do not create a feature slug unless the rule changes.
 
 ## 1. Preparation
-Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md` (target), `docs/domain/context-map.as-is.md`, `docs/domain/gap-register.md`, `docs/architecture/data-model.md`, `docs/adr/`, `docs/stories/BACKLOG.md`. Find out what already exists for this idea (events, stories, hotspots) before asking anything. With an intake result, use its source and matching story instead of searching from scratch. If a linked story exists, pull the tracker first (`/backlog-sync pull`) so the mirror is current.
+Mark `grilling start` (it ends after step 2b). Read `docs/product/vision.md`, `CONTEXT.md`, `docs/domain/events.yaml`, `docs/domain/context-map.md` (target), `docs/domain/context-map.as-is.md`, `docs/domain/gap-register.md`, `docs/architecture/data-model.md`, `docs/adr/`, `docs/stories/BACKLOG.md`. Find out what already exists for this idea (events, stories, hotspots) before asking anything. With an intake result, use its source and matching story instead of searching from scratch. If a linked story exists, pull the tracker first (`/backlog-sync pull`) so the mirror is current.
 
 ## 2. Grill the idea
 Call the `skill` tool four times, for `grilling`, `domain-model`, `architect` and `ux-design` (the first three are the set of `/grill-with-docs`, which can't be called from a skill). Grill the user until the frontier is empty and they confirm a shared understanding. The grilling carries the three perspectives the spec linter cannot check – product, engineering, UX. With an intake result, the ticket's claims and the intake's `signals` seed the frontier; unresolved comments and contradictions are the first questions. Typical branches:
@@ -72,7 +80,7 @@ Call the `skill` tool four times, for `grilling`, `domain-model`, `architect` an
 - New or changed terms → `CONTEXT.md` inline.
 - An architectural trade-off → ADR (`status: proposed`) only if the architect skill's three criteria hold.
 
-Don't move on before the user confirms.
+Don't move on before the user confirms. Mark `grilling end` here – or after step 2b when a prototype runs.
 
 ## 2b. Prototype (optional)
 
@@ -98,15 +106,16 @@ and belongs to `/implement`, not to discovery. If the prototype does not answer 
 timebox, stop and record what is known.
 
 ## 3. Focused event storming
-Read `.claude/skills/event-storming/SKILL.md` and follow it with the feature as focus: phases 1–6 (phase 0 is covered by step 2), 7–8 only if aggregates or contexts are affected. Capture the feature as its own flow (`FLOW-<FeatureName>`) and write `docs/domain/events.yaml` after every phase.
+Mark `event-storming start` / `end` around this step. Read `.claude/skills/event-storming/SKILL.md` and follow it with the feature as focus: phases 1–6 (phase 0 is covered by step 2), 7–8 only if aggregates or contexts are affected. Capture the feature as its own flow (`FLOW-<FeatureName>`) and write `docs/domain/events.yaml` after every phase.
 
 ## 4. Domain model & architecture
+Mark `domain-architect start` / `end` around this step when anything below runs; skip the markers when nothing does.
 - Contexts, aggregates or the data model affected → delegate to `domain-architect` with the file paths, the changed/new IDs from `events.yaml` and a clear task.
 - An architectural trade-off came up that wasn't recorded during grilling → offer an ADR per the architect skill's three criteria (`status: proposed`, the user accepts).
 - A UX decision changes or adds a guideline → delegate to `ux-designer`: write exactly these decisions into `docs/product/ux-guidelines.md`. A prototype verdict is a decision like any other; the branch pointer and the verdict go into the story through step 5. The audit of existing screens belongs to `/groom-backlog`, not to the feature.
 
 ## 5. Stories
-Write the stories yourself as the spec engineer (the `user-stories` skill is the method): derive one story per new or changed command, policy or read model; name `aggregate` and `command` (exactly one each), the event/command IDs, `ui: true` for every story with a frontend part, `type: chore`/`task` for non-domain work, the label `feature:<slug>`, the label `bug` for the bug path, the source reference (`Source: <ref> (<url>)`) for every story derived from a ticket, the research files they cite (`sources: [docs/research/<topic>.md]`) with adopted/rejected findings and their reasons in `## Context`, the UX decisions from step 2 (with the G-numbers of the guidelines they reference), the prototype verdict and branch pointer from step 2b, and existing stories that need revising. Do not merge two commands into one story; if the cut needs more than 4 scenarios, split it. Finished stories get `status: review` and are run through the spec linter.
+Mark `story-writing start` / `end` around this step. Write the stories yourself as the spec engineer (the `user-stories` skill is the method): derive one story per new or changed command, policy or read model; name `aggregate` and `command` (exactly one each), the event/command IDs, `ui: true` for every story with a frontend part, `type: chore`/`task` for non-domain work, `feature: <slug>` and the label `feature:<slug>`, the label `bug` for the bug path, the source reference (`Source: <ref> (<url>)`) for every story derived from a ticket, the research files they cite (`sources: [docs/research/<topic>.md]`) with adopted/rejected findings and their reasons in `## Context`, the UX decisions from step 2 (with the G-numbers of the guidelines they reference), the prototype verdict and branch pointer from step 2b, and existing stories that need revising. Do not merge two commands into one story; if the cut needs more than 4 scenarios, split it. Finished stories get `status: review` and are run through the spec linter.
 
 ## 6. Review
 Read `.claude/skills/review-stories/SKILL.md` and follow it with the story IDs from step 5 as the arguments (only this feature's stories, not everything in `review`). The spec linter must be green before a story reaches `ready-for-human-review`; the user approves every change and every `ready`. There is no separate review subagent.

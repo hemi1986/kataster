@@ -18,6 +18,15 @@ Workflow: `draft → review → ready-for-human-review → ready → in-progress
 - `ui: true` marks a story with a frontend part; it triggers the on-demand UX utility, never a gate.
 - A story that turns out wrong goes back to `review` with an `[OPEN]` and a row in `OPEN_QUESTIONS.md`.
 - `done` is final: a change to finished behaviour is a new story.
+- `feature: <slug>` links a story to the `/feature` run that derived it.
+
+## Metrics
+
+`metrics/` holds one append-only file per story (`ST-NNN.json`) and per feature (`feature-<slug>.json`): tokens,
+model, harness and time of every marked phase, written by `story-metrics.ts mark … end` and the session hooks –
+never by hand. Commit them with the work. `node .claude/skills/metrics/scripts/story-metrics.ts report` shows cost
+(from `metrics.prices` in `.claude/project.json`), the features' spec cost shared across their stories, and size
+vs. actual. Details: `.claude/skills/metrics/SKILL.md`.
 
 ## Backlog backend
 

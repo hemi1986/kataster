@@ -13,6 +13,7 @@ events: [EVT-Example]
 depends_on: []
 labels: []
 status: draft
+# feature: <slug> – the /feature run that derived it; keep the label feature:<slug> beside it
 # sources: [docs/research/<topic>.md, https://…] – required for risk: high and the configured labels
 # external: { provider: github|jira, key: "…", url: "…" } – written by /backlog-sync, never by hand
 ---

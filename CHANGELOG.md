@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- **Story metrics.** `story-metrics.ts mark <ST-NNN|feature:<slug>> <phase> start|end` marks a phase; `/shape`,
+  `/feature`, `/review-stories` and `/implement` mark theirs. Tokens (input, output incl. reasoning, cache
+  read/write), model, harness, agent time and user wait time land append-only in `docs/stories/metrics/`, one entry
+  per pass, stream and model; tokens outside every phase go to an `unassigned` pot. Two adapters read the usage:
+  Claude Code transcripts (with `subagents/`) and the OpenCode database (read-only, `node:sqlite`, child sessions,
+  legacy-table fallback, schema check). A PreToolUse hook / the plugin adds the caller's session and subagent id to
+  the marker; `PermissionRequest`, OpenCode's `permission.*`/`form.*` events and `SessionStart`/`SessionEnd` complete
+  waits and finalise sessions. `story-metrics.ts report [--story|--feature|--since] [--json]` prices tokens from
+  `metrics.prices` in `.claude/project.json` (no built-in prices), splits a feature's spec cost across its stories
+  by scenarios/checklist items, and compares `size` with the actual cost.
+- **`feature` in the story frontmatter.** `feature: <slug>` links a story to the `/feature` run that derived it; the
+  linter refuses a mismatch with the `feature:<slug>` label and more than one feature label, and warns about a label
+  without the field.
+- **`/implement` tolerates collected metrics.** Uncommitted files under `docs/stories/metrics/` no longer block the
+  clean-tree check; they are committed as `metrics: collect` on the story branch.
+
 ## 0.6.3 – 2026-11-22
 
 Follow-ups from the 0.6.2 upgrade report in #8.

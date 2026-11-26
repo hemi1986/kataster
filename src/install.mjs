@@ -31,7 +31,14 @@ const LEGACY_MARKERS = [
 ];
 
 const HOOK_EVENTS = {
-  SessionStart: [{ hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.ts"' }] }],
+  SessionStart: [
+    {
+      hooks: [
+        { type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.ts"' },
+        { type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/metrics.ts"', timeout: 30 },
+      ],
+    },
+  ],
   PreToolUse: [
     {
       matcher: "Write|Edit|MultiEdit",
@@ -39,7 +46,10 @@ const HOOK_EVENTS = {
     },
     {
       matcher: "Bash",
-      hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/bash-guard.ts"' }],
+      hooks: [
+        { type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/bash-guard.ts"' },
+        { type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/metrics.ts"' },
+      ],
     },
   ],
   PostToolUse: [
@@ -53,6 +63,9 @@ const HOOK_EVENTS = {
     },
   ],
   Stop: [{ hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/stop-gate.ts"', timeout: 600 }] }],
+  // Story metrics: permission prompts are waiting time; a session's end finalises its metrics.
+  PermissionRequest: [{ hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/metrics.ts"' }] }],
+  SessionEnd: [{ hooks: [{ type: "command", command: 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/metrics.ts"', timeout: 30 }] }],
 };
 
 const ALLOW = [
@@ -63,6 +76,7 @@ const ALLOW = [
   "Bash(node .claude/skills/adopt/scripts/*)",
   "Bash(node .claude/skills/backlog/scripts/*)",
   "Bash(node .claude/skills/implement/scripts/*)",
+  "Bash(node .claude/skills/metrics/scripts/*)",
   "Bash(gh issue *)",
   "Bash(gh label *)",
   "Bash(git status *)",
@@ -505,6 +519,8 @@ This repository runs the Kataster workflow. Discovery lives in \`.claude/skills/
 - **Reviews:** \`/implement\` scales review to the diff. \`code-reviewer\` and \`acceptance-tester\` report findings and
   never create stories; fast-lane stories skip the formal review pass.
 - **Gate:** \`node .claude/skills/implement/scripts/verify.ts\`.
+- **Metrics:** workflow skills mark their phases with \`story-metrics.ts mark\` (the \`metrics\` skill); never edit
+  \`docs/stories/metrics/\`, commit it with the work.
 
 Keep this block short: it is loaded into every session. Put rules into the skill that owns them, not here.
 ${AGENTS_END}`;

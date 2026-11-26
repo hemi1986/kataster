@@ -8,6 +8,7 @@
       "Bash(node .claude/skills/user-stories/scripts/*)",
       "Bash(node .claude/skills/research/scripts/*)",
       "Bash(node .claude/skills/implement/scripts/*)",
+      "Bash(node .claude/skills/metrics/scripts/*)",
       "Bash(git status *)",
       "Bash(git diff *)",
       "Bash(git log *)"
@@ -22,6 +23,11 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.ts\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/metrics.ts\"",
+            "timeout": 30
           }
         ]
       }
@@ -42,6 +48,10 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/bash-guard.ts\""
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/metrics.ts\""
           }
         ]
       }
@@ -74,6 +84,27 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-gate.ts\"",
             "timeout": 600
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/metrics.ts\""
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/metrics.ts\"",
+            "timeout": 30
           }
         ]
       }

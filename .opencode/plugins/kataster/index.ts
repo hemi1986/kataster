@@ -10,6 +10,11 @@
  *   PostToolUse    -> tool hook `execute.after`         -> append text to the result
  *   Stop           -> session hook `experimental.idle`  -> synthetic message once
  *
+ * Story metrics (`metrics.ts`, the same script Claude Code runs):
+ *   PreToolUse     -> `execute.before` on shell           -> a `story-metrics.ts mark` call gets the session id
+ *   wait events    -> events `permission.asked/replied`, `form.created/replied/cancelled` -> .claude/state/metrics
+ *   SessionStart   -> event `session.created`             -> finalises earlier sessions' metrics
+ *
  * OpenCode also has no path-scoped rules: on every read or write, matching `.claude/rules/*.md` files are
  * attached as keyed instruction entries (`path-rules.ts`), so both harnesses see the same rules.
  *
@@ -56,6 +61,16 @@ function claudeInput(tool: string, input: unknown): Record<string, unknown> {
 function additionalContext(stdout: string): string | undefined {
   try {
     return JSON.parse(stdout)?.hookSpecificOutput?.additionalContext;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The rewritten command from a PreToolUse hook's `updatedInput`, if any. */
+function updatedCommand(stdout: string): string | undefined {
+  try {
+    const command = JSON.parse(stdout)?.hookSpecificOutput?.updatedInput?.command;
+    return typeof command === "string" ? command : undefined;
   } catch {
     return undefined;
   }
@@ -182,6 +197,8 @@ export default Plugin.define({
           childSessions.add(data.sessionID);
           continue;
         }
+        // Metrics of sessions that ended earlier – in the background, it never delays the status block.
+        void run("metrics.ts", { hook_event_name: "SessionStart", harness: "opencode", session_id: data.sessionID }, 30_000);
         const res = await run("session-start.ts", {}, 15_000);
         const text = res.stdout.trim();
         if (!text) continue;
@@ -194,6 +211,20 @@ export default Plugin.define({
     })().catch((error) => {
       // a broken status check never blocks a session
       console.error(`[kataster] session-start failed: ${String(error)}`);
+    });
+
+    // ---- Metrics: waiting for the user ------------------------------------
+    // OpenCode keeps permission prompts and questions (forms) only as live events; they are logged as they happen.
+    void (async () => {
+      for await (const event of ctx.event.subscribe({
+        types: ["permission.asked", "permission.replied", "form.created", "form.replied", "form.cancelled"] as never,
+        signal: controller.signal,
+      })) {
+        const e = event as { type?: string; data?: unknown };
+        await run("metrics.ts", { hook_event_name: "KatasterEvent", harness: "opencode", type: e.type, data: e.data }, 15_000);
+      }
+    })().catch((error) => {
+      console.error(`[kataster] metrics events failed: ${String(error)}`);
     });
 
     // ---- PreToolUse: protect-files + bash-guard ----------------------------
@@ -212,6 +243,13 @@ export default Plugin.define({
       if (toolName === "Bash") {
         const res = await run("bash-guard.ts", payload, 15_000);
         if (res.code === 2) throw new Error(res.stderr.trim() || "Blocked by bash-guard.");
+        // A metrics marker learns which session (or child session = subagent) set it.
+        const command = String(payload.tool_input.command ?? "");
+        if (command.includes("story-metrics.ts")) {
+          const mark = await run("metrics.ts", { ...payload, hook_event_name: "PreToolUse", harness: "opencode", agent_type: event.agent }, 15_000);
+          const next = updatedCommand(mark.stdout);
+          if (next) event.input = { ...(event.input as Record<string, unknown>), command: next } as never;
+        }
         return;
       }
 

@@ -2,6 +2,7 @@
  * PreToolUse hook (Write|Edit|MultiEdit): protects files that must not be edited by hand.
  *
  * - Generated files (BACKLOG.md, event-storming.md) → blocked; they are rendered by hooks and scripts.
+ * - Metrics files (docs/stories/metrics/*.json) → blocked; they are append-only and written by story-metrics.ts.
  * - Accepted ADRs are not edited, only superseded. Two changes are allowed:
  *   - `status: accepted` → `status: superseded by ADR-NNNN`, nothing else,
  *   - an editorial change (typo, outdated path, formatting) that keeps `status: accepted`, keeps every earlier entry
@@ -53,6 +54,9 @@ function block(msg: string): never {
 }
 
 if (GENERATED.has(r)) block(`'${r}' is generated – change its sources (story files, events.yaml) instead.`);
+if (/^docs\/stories\/metrics\/[^/]+\.json$/.test(r)) {
+  block(`'${r}' is an append-only metrics file – it is written by \`story-metrics.ts mark … end\` and \`collect\`, never by hand.`);
+}
 
 if (/^docs\/adr\/\d{4}-.*\.md$/.test(r) && existsSync(path)) {
   const old = readFileSync(path, "utf8");
