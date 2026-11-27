@@ -204,17 +204,24 @@ Mark `review-<agent> start` right before you start each reviewer (`review-code-r
 there. A second round is a second pass. Then record each review – verdict and findings per severity – with
 `node .claude/skills/metrics/scripts/story-metrics.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n>`.
 
-Both reviewers report findings and never create stories. A finding is **fixed in this story** or becomes an open
-question to the developer (step 6) – there is no follow-up ticket.
+Both reviewers report findings and never create stories. A finding is **fixed in this story** or, when it is a
+real product or domain decision, an open question to the developer (step 6) – there is no follow-up ticket.
 
 Say which lane you picked and why in one line.
 
 ## 6. Refactor
 Mark `fixes start` before the first fix and `fixes end` after the last green run of this step.
-- Fix all blockers and majors **inside this story**, and the minors you agree with; say which minors you skip and why.
-  A finding tagged `merge-blocker: <kind>` (security, privacy, authorization, injection, server-error, rule-bypass)
-  is never skipped and never handed back as a question, whatever severity it carries.
+- **Every finding is fixed inside this story**, in one fix pass – blockers, majors and minors. The rule is the same
+  in a marathon run (`marathon/SKILL.md`, step 4):
+  - Skip only a minor the reviewer itself marks as not worth fixing (cosmetic, known debt), and say why.
+  - A question with a sensible conservative default – the reviewer's recommendation, the existing `invalid` path – is
+    decided with that default and fixed like a finding; name the decision in the wrap-up.
+  - Only a question that is a real product or domain decision, with no defensible default, goes to the developer.
+  - A finding tagged `merge-blocker: <kind>` (security, privacy, authorization, injection, server-error,
+    rule-bypass) is never skipped and never handed back as a question, whatever severity it carries.
   Where a finding offers options, apply the recommended one without asking; ask only when no option is recommended.
+  A fix pass for minors and decided questions alone is not reviewed again; a `not accepted` verdict (step 7) or a
+  merge blocker goes back to the reviewer who gave it.
 - **No follow-up stories from reviews.** A finding that is too large for this story is either:
   1. a **question to the developer** in the review file and in the wrap-up (with evidence and options), or
   2. a line in `## Out of Scope` / a row in `OPEN_QUESTIONS.md` when it is a real decision for the user.
@@ -246,8 +253,9 @@ the user only merges.
 
 **Both lanes – the pull request:**
 3. Title `ST-NNN: <story title>`, body = the scenarios as a checklist (domain) or the task checklist (fast lane),
-   links to the story and the review files (if any), the acceptance verdict (domain), the preview URL, remaining
-   minors/questions, and anything the user must approve (a conventions change). (No `gh` CLI, or it isn't
+   links to the story and the review files (if any), the acceptance verdict (domain), the preview URL, the skipped
+   minors with their reason, the questions decided with a default (one line each), the open product or domain
+   questions, and anything the user must approve (a conventions change). (No `gh` CLI, or it isn't
    authenticated: push and give the user the compare URL `git push` prints.)
 4. Mark `merge start` once the pull request is open. **The user merges** – on the preview if they want to look
    first. When they say it is merged: back to the default branch, `git pull`, mark `merge end` (the waiting time is
@@ -339,12 +347,18 @@ on the story branch. The story is the given one and the base is taken as it is �
 - `PASS continuation` → the branch exists: review findings came back, a decision you were blocked on was made, or an
   earlier pass was cut off. **The branch is the memory**, not this session: run step 1.3 again (`kontext start`,
   the context pack, `kontext end`), read `git log <base>..HEAD`, the files listed under `REVIEWS` and whatever the
-  task adds (findings, the decision).
+  task adds (findings with the decided defaults, the decision).
   Then, in the same branch:
-  - **Findings** → step 6 with its markers (`fixes start` … `fixes end`): fix blockers and majors and the minors you
-    agree with, each in its own commit. Every finding goes into the report's `findings` as `fixed`, `skipped` (say
-    why in the text) or `open`. A finding without a recommended option, or too large for this story, is `open` and
-    gets an `openQuestions` entry – the pass ends `blocked`.
+  - **Findings** → step 6 with its markers (`fixes start` … `fixes end`): fix every finding the task hands you –
+    blockers, majors, minors and **decided defaults** – each in its own commit. The orchestrator has triaged them
+    already: the ones it names as skipped you leave alone (`skipped`, with its reason).
+  - **Decided defaults** – a reviewer question the orchestrator decided (*decided: warn in QA, naming the field*) is
+    a finding with its fix named: build it like one and list it as `fixed`. It is never a reason for `blocked` and
+    never one of your `decisions` – the orchestrator records it. You still decide no question on your own: a raw
+    question with no default named is `open`.
+  - Every finding goes into the report's `findings` as `fixed`, `skipped` (say why in the text) or `open`. A finding
+    without a recommended option or a decided default, or too large for this story, is `open` and gets an
+    `openQuestions` entry – the pass ends `blocked`.
   - **Unfinished work** (a `wip` commit, a scenario without its commit, a story still `ready`) → continue at the
     first step that is not done.
   - Then step 4 again, with its own `verify` markers.

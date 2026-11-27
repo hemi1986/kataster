@@ -10,13 +10,18 @@
  *   claim ST-NNN [--continue]
  *       Takes the planned story for a worker. `--continue` starts a further pass on a story that is claimed already.
  *       Exit 3 = the run has to stop (limit, budget, red verify, foundation gate, nothing planned).
- *   review ST-NNN <agent> --verdict <verdict> [--blocker n] [--major n] [--minor n] [--question n]
+ *   review ST-NNN <agent> --verdict <verdict> [--blocker n] [--major n] [--minor n] [--question n] [--skip n]
  *       Records a review on the claim and in the story metrics, and prints what follows: fixes, merge or escalate.
+ *       Every finding gets one fix pass – minors and questions too, unless `--skip` counts them out (a minor the
+ *       reviewer marks as not worth fixing, a question that is a real product decision). A pass for minors and
+ *       decided questions alone is not reviewed again: its THEN is the merge.
  *       The merge blockers are the findings the review file tags `merge-blocker: <kind>` (lib/merge-blockers.ts);
  *       a finding that looks like one without the tag is a WARN line and goes into the summary, never blocking.
  *   merge-check ST-NNN [--details <file>|-]
  *       read-only: refuses (exit 1) while a reviewer's last review has a merge blocker or the details carry one as a
- *       decision or an open question – run before `git merge`, so a blocker never reaches the integration branch.
+ *       decision or an open question, while the last round's findings wait for their fix pass, or while the details
+ *       skip a minor without its reason or leave a technical question open – run before `git merge`, so none of it
+ *       reaches the integration branch.
  *   result ST-NNN merged|failed [--reason <text>] [--details <file>|-]
  *       Ends the claim. `merged` is checked against git and the last verify.ts run.
  *   escalate ST-NNN --reason <text> [--details <file>|-]
@@ -70,7 +75,7 @@ function reviewFileBlockers(id: string, agent: string): { tagged: number; possib
 const USAGE = `Usage:
   ${SCRIPT} start-run [--base <branch>] [--max-stories <n>] [--max-failures <n>] [--no-gate-foundation] [--budget-tokens <n>] [--budget-usd <n>]
   ${SCRIPT} claim ST-NNN [--continue]
-  ${SCRIPT} review ST-NNN <agent> --verdict <verdict> [--blocker <n>] [--major <n>] [--minor <n>] [--question <n>]
+  ${SCRIPT} review ST-NNN <agent> --verdict <verdict> [--blocker <n>] [--major <n>] [--minor <n>] [--question <n>] [--skip <n>]
   ${SCRIPT} merge-check ST-NNN [--details <file>|-]
   ${SCRIPT} result ST-NNN merged|failed [--reason <text>] [--details <file>|-]
   ${SCRIPT} escalate ST-NNN --reason <text> [--details <file>|-]
@@ -87,8 +92,11 @@ const USAGE = `Usage:
   --budget-tokens <n>    tokens the run's stories may use, from the story metrics (k and M are understood: 800k, 2.5M)
   --budget-usd <n>       cost the run's stories may reach, priced from metrics.prices
   --verdict <verdict>    ${REVIEW_VERDICTS.join(" | ")}
-  --details <file>       JSON for the summary: { "openQuestions": [{ "question": "…", "kind": "domain|technical" }],
-                         "notes": ["…"] } – or a worker report as it is; '-' reads stdin
+  --skip <n>             of this review's minors and questions, those that get no fix pass: a minor the reviewer
+                         marks as not worth fixing (a note with the reason), a real product decision (an open question)
+  --details <file>       JSON for the summary: { "openQuestions": [{ "question": "…", "kind": "domain|product" }],
+                         "decisions": [{ "question", "decision", "why", "by": "orchestrator" }], "notes": ["…"] }
+                         – or a worker report as it is; '-' reads stdin
   --running ST-NNN       resume: the worker of this claim is still running – keep the claim as it is
 
 Exit codes: 0 done · 1 refused · 2 usage · 3 the run has to stop (go on with the end of the run).`;
@@ -115,7 +123,7 @@ const refuse = (message: string): never => {
 
 // Positional words (an outcome, a reviewer) are taken out before the strict parser sees the rest.
 const words: string[] = [];
-const VALUE_OPTIONS = ["--base", "--max-stories", "--max-failures", "--budget-tokens", "--budget-usd", "--verdict", "--blocker", "--major", "--minor", "--question", "--reason", "--details", "--running", "--pr", "--out", "--caller"];
+const VALUE_OPTIONS = ["--base", "--max-stories", "--max-failures", "--budget-tokens", "--budget-usd", "--verdict", "--blocker", "--major", "--minor", "--question", "--skip", "--reason", "--details", "--running", "--pr", "--out", "--caller"];
 const argv: string[] = [];
 for (let i = 0; i < rest.length; i += 1) {
   const arg = rest[i];
@@ -337,8 +345,10 @@ try {
     const verdict = (args.values.get("--verdict") ?? usage("--verdict is needed.")) as ReviewVerdict;
     if (!REVIEW_VERDICTS.includes(verdict)) usage(`--verdict must be one of ${REVIEW_VERDICTS.join(", ")}.`);
     const counts = { blocker: count("--blocker", 0), major: count("--major", 0), minor: count("--minor", 0), question: count("--question", 0) };
+    const skip = count("--skip", 0);
+    if (skip > counts.minor + counts.question) usage(`--skip ${skip} is more than the review's ${counts.minor} minor and ${counts.question} question.`);
     const file = reviewFileBlockers(id, agent);
-    const review = { agent, verdict, ...counts, mergeBlocker: file.tagged, ...(file.possible.length ? { possible: file.possible } : {}) };
+    const review = { agent, verdict, ...counts, mergeBlocker: file.tagged, ...(skip ? { skip } : {}), ...(file.possible.length ? { possible: file.possible } : {}) };
     const at = iso();
     const next = await update((state) => {
       const applied = m.applyReview(state, id, review, at);
@@ -355,7 +365,8 @@ try {
       process.exit(0);
     }
     const mb = review.mergeBlocker ? `, ${review.mergeBlocker} merge blocker` : "";
-    say("REVIEW", `${id} ${agent}: ${verdict.replaceAll("-", " ")} – ${review.blocker} blocker, ${review.major} major, ${review.minor} minor, ${review.question} question${mb}`);
+    const sk = skip ? `, ${skip} skipped` : "";
+    say("REVIEW", `${id} ${agent}: ${verdict.replaceAll("-", " ")} – ${review.blocker} blocker, ${review.major} major, ${review.minor} minor, ${review.question} question${mb}${sk}`);
     for (const p of file.possible) {
       say("WARN", `untagged finding that looks like a merge blocker (${p.kind}): ${p.text.slice(0, 140)} – only a \`merge-blocker: <kind>\` tag blocks; it goes into the summary for the user`);
     }
@@ -368,15 +379,28 @@ try {
           : `escalate – 'not accepted' ${next.notAccepted} times: ${SCRIPT} escalate ${id} --reason "…"`,
       );
     } else if (next.action === "fixes") {
-      const extra = r.mergeBlocker ? `, ${r.mergeBlocker} merge blocker` : "";
-      say("NEXT", `fixes – a worker pass with the findings (${r.blocker} blocker, ${r.major} major${extra} this round): ${SCRIPT} claim ${id} --continue`);
+      const extra = `${r.mergeBlocker ? `, ${r.mergeBlocker} merge blocker` : ""}${r.skip ? `, ${r.skip} skipped` : ""}`;
+      say(
+        "NEXT",
+        `fixes – one worker pass with every finding (${r.blocker} blocker, ${r.major} major, ${r.minor} minor, ${r.question} question${extra} this round; ` +
+          `each question with the default you decided): ${SCRIPT} claim ${id} --continue`,
+      );
       say(
         "THEN",
-        next.then === "merge"
-          ? "the merge – the acceptance stands, no second review"
-          : `${next.again.join(" and ")} again – ${r.mergeBlocker ? "a merge blocker is merged only after the reviewer who found it saw the fix" : "its verdict was 'not accepted'"}`,
+        next.fix === "minor"
+          ? "the merge – no second review: minors and decided questions are not reviewed again"
+          : next.then === "merge"
+            ? "the merge – the acceptance stands, no second review"
+            : `${next.again.join(" and ")} again – ${r.mergeBlocker ? "a merge blocker is merged only after the reviewer who found it saw the fix" : "its verdict was 'not accepted'"}`,
       );
-    } else say("NEXT", `merge – nothing a worker has to fix${r.minor + r.question ? ` (${r.minor} minor, ${r.question} question are yours to decide)` : ""}`);
+    } else {
+      const left = r.minor + r.question - r.skip;
+      say(
+        "NEXT",
+        `merge – nothing left for a worker${r.skip ? ` (${r.skip} skipped: a note with the reason for each minor, an open question for each product decision)` : ""}` +
+          `${left > 0 ? ` (${left} minor or question after the fix pass for them: a note or an open question each – no further pass, no new story)` : ""}`,
+      );
+    }
     process.exit(0);
   }
 
@@ -477,7 +501,8 @@ try {
       if (a.action === "merge") say("MERGE", `${a.story} on ${a.branch} – accepted or merged already; go on with the merge step, skipping what is done`);
       if (a.action === "report") {
         const kept = readReport(a.story);
-        say("REPORT", `${a.story} on ${a.branch} – pass ${a.attempts} ended with '${kept?.result ?? "?"}', its report was never read: ${d.rel(reportFile(a.story))} – go on with step 3, no new pass`);
+        const minor = state.claims[a.story]?.minorPass ? " – it was the fix pass for minors and decided questions: `ready-for-review` goes to the merge, no second review" : "";
+        say("REPORT", `${a.story} on ${a.branch} – pass ${a.attempts} ended with '${kept?.result ?? "?"}', its report was never read: ${d.rel(reportFile(a.story))} – go on with step 3, no new pass${minor}`);
       }
     }
     if (!actions.length) say("CLAIMS", "none open");
@@ -516,9 +541,11 @@ try {
     const details = readDetails();
     const claim = loaded().claims[id];
     if (!claim) throw new m.MarathonError(`${id} is not claimed – there is nothing to merge.`);
-    const errs = m.mergeBlockerErrors(id, claim, details);
-    if (errs.length) throw new m.MarathonError(`${id} is not merged – merge blockers:\n${errs.map((x) => `  - ${x}`).join("\n")}`);
-    say("MERGE-CHECK", `${id} – no merge blocker in the reviews or the details: go on with the merge`);
+    const blockers = m.mergeBlockerErrors(id, claim, details);
+    if (blockers.length) throw new m.MarathonError(`${id} is not merged – merge blockers:\n${blockers.map((x) => `  - ${x}`).join("\n")}`);
+    const open = m.openFindingErrors(id, claim, details);
+    if (open.length) throw new m.MarathonError(`${id} is not merged:\n${open.map((x) => `  - ${x}`).join("\n")}`);
+    say("MERGE-CHECK", `${id} – no merge blocker and no open finding in the reviews or the details: go on with the merge`);
     for (const x of m.mergeSuspects(claim.reviews, details)) say("POSSIBLE", `${x} – not tagged, does not block; the summary lists it under 'Possible merge blockers – please check'`);
     process.exit(0);
   }

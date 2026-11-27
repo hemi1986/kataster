@@ -205,6 +205,11 @@ export interface MarathonReview {
   mergeBlocker?: number;
   /** Untagged findings of the review file that look like merge blockers – for the summary, never blocking. */
   possible?: PossibleMergeBlocker[];
+  /**
+   * Of the minors and questions, those that get no fix pass: a minor the reviewer marks as not worth fixing, a
+   * question that is a real product or domain decision. Missing means none.
+   */
+  skip?: number;
   at: string;
 }
 
@@ -213,15 +218,19 @@ export interface PossibleMergeBlocker {
   text: string;
 }
 
-/** A decision somebody else has to make – the shape of a worker report's `openQuestions`. */
+/**
+ * A decision somebody else has to make – the shape of a worker report's `openQuestions`. In a merged story only a
+ * real product or domain decision stays open; a technical question is decided with a default.
+ */
 export interface MarathonQuestion {
   question: string;
   kind: string;
 }
 
 /**
- * A technical detail the story left open that the worker settled with a default instead of blocking – the shape of
- * a worker report's `decisions`. It is merged, and listed in the run's pull request for the user to confirm.
+ * A detail the story left open that was settled with a conservative default instead of blocking – the shape of a
+ * worker report's `decisions`, or a reviewer question the orchestrator decided and handed to a fix pass. It is
+ * merged, and listed in the run's pull request for the user to confirm.
  */
 export interface MarathonDecision {
   /** What was open. */
@@ -230,7 +239,12 @@ export interface MarathonDecision {
   decision: string;
   /** Why it is safe: the convention or code it follows, why it is conservative and cheap to change. */
   why: string;
+  /** Who decided: the worker (the default when missing) or the orchestrator, on a reviewer's recommendation. */
+  by?: MarathonDecider;
 }
+
+export const MARATHON_DECIDERS = ["worker", "orchestrator"] as const;
+export type MarathonDecider = (typeof MARATHON_DECIDERS)[number];
 
 /**
  * Where a claimed story is: `worker` – a pass runs (or was cut off), `review` – reviews came back with something a
@@ -254,6 +268,11 @@ export interface MarathonClaim {
   /** ISO time the current worker pass started; reviews recorded after it form the current round. */
   passStart?: string;
   reviews?: MarathonReview[];
+  /**
+   * A fix pass for minors and decided questions alone has run. It is the only one: such a pass is not reviewed again,
+   * and a later round with nothing but minors and questions goes to the merge.
+   */
+  minorPass?: boolean;
 }
 
 /**
@@ -339,7 +358,7 @@ export function marathonStateErrors(raw: unknown): string[] {
   const count = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0;
   const amount = (v: unknown): boolean => v === null || (typeof v === "number" && Number.isFinite(v) && v > 0);
   const reviews = (v: unknown): boolean =>
-    v === undefined || (Array.isArray(v) && v.every((r) => obj(r) && str(r.agent) && str(r.verdict) && str(r.at) && ["blocker", "major", "minor", "question"].every((k) => count(r[k])) && (r.mergeBlocker === undefined || count(r.mergeBlocker)) && (r.possible === undefined || (Array.isArray(r.possible) && r.possible.every((p) => obj(p) && str(p.kind) && str(p.text))))));
+    v === undefined || (Array.isArray(v) && v.every((r) => obj(r) && str(r.agent) && str(r.verdict) && str(r.at) && ["blocker", "major", "minor", "question"].every((k) => count(r[k])) && (r.mergeBlocker === undefined || count(r.mergeBlocker)) && (r.skip === undefined || count(r.skip)) && (r.possible === undefined || (Array.isArray(r.possible) && r.possible.every((p) => obj(p) && str(p.kind) && str(p.text))))));
   if (!obj(raw)) return ["the state is not a JSON object"];
   if (raw.version !== 1) errs.push(`version must be 1, is ${JSON.stringify(raw.version)}`);
   if (!str(raw.run)) errs.push("run (the run ID) is missing");
@@ -358,6 +377,7 @@ export function marathonStateErrors(raw: unknown): string[] {
       if (!obj(c) || !str(c.branch) || !str(c.start) || !count(c.attempts)) errs.push(`claim ${id} needs branch, start and attempts`);
       else if (c.phase !== undefined && !(MARATHON_PHASES as readonly unknown[]).includes(c.phase)) errs.push(`claim ${id}: phase must be ${MARATHON_PHASES.join(", ")}`);
       else if (!reviews(c.reviews)) errs.push(`claim ${id}: every review needs agent, verdict, at and the four counts`);
+      else if (c.minorPass !== undefined && typeof c.minorPass !== "boolean") errs.push(`claim ${id}: minorPass must be true or false`);
     }
   }
   if (!obj(raw.results)) errs.push("results must be an object (story ID → result)");

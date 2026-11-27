@@ -426,17 +426,19 @@ the end – and you merge.
   the limits (stories per run, failures in a row), the foundation gate and an optional token or cost budget.
 - **Per story.** Plan and claim → `story-worker` with `/implement --worker ST-NNN --base marathon/<date>` → the
   report decides: `blocked` and `returned-to-review` are escalated with their reason and the run goes on;
-  `ready-for-review` starts the reviewers in the lanes of `/implement`. Findings go back to the worker – the same
-  agent session where the harness can continue one, otherwise a fresh worker on the same branch. A second
-  `not accepted` escalates the story. Then: merge into the integration branch, `verify.ts` there, `done`, new
+  `ready-for-review` starts the reviewers in the lanes of `/implement`. Every finding goes back to the worker in
+  one fix pass – minors too, and reviewer questions the orchestrator decided with their conservative default – the
+  same agent session where the harness can continue one, otherwise a fresh worker on the same branch. A pass for
+  minors and decided questions alone is not reviewed again. A second `not accepted` escalates the story. A run
+  creates no follow-up stories: only real product or domain questions are left for you. Then: merge into the integration branch, `verify.ts` there, `done`, new
   glossary terms and `proposed` ADRs from the report (the orchestrator alone gives out ADR numbers), `BACKLOG.md`,
   metrics.
 - **It stops** when nothing is left to plan, a limit or the budget is reached, the foundation tasks
   (`type: tech-task`) are merged and a different story is next, or `verify.ts` is red on the integration branch –
   then immediately, and nothing is repaired.
 - **The end.** The integration branch is pushed and a pull request to the default branch is opened (a draft after a
-  red verify) with the summary, every escalation with its reason, the open questions and the metrics of the run's
-  stories. Escalated stories keep their local story branch.
+  red verify) with the summary, every escalation with its reason, the open questions that need you, the possible
+  merge blockers, the decisions taken with a default (one line each) and the metrics of the run's stories. Escalated stories keep their local story branch.
 - **One writer.** `.claude/state/marathon.json` changes only through `marathon-state.ts` (`start-run`, `claim`,
   `review`, `result`, `escalate`, `release`, `resume`, `finish`; `status` and `summary` read): every write is locked
   and atomic, a stale lock is broken with a warning, a broken state file is an error and is never overwritten, and a

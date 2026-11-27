@@ -84,6 +84,12 @@ The workflow is spec-driven and mechanical, not a simulated organisation:
   blockers – please check*.
 - **Reviewers report, never plan:** `code-reviewer` and `acceptance-tester` create no stories. Findings are fixed in
   the story or handed back as open questions.
+- **Every finding is fixed in its story** – the same rule in `implement/SKILL.md` (step 6) and `marathon/SKILL.md`
+  (step 4). In a marathon one fix pass gets every finding; the orchestrator decides a question with a conservative
+  default (`decisions`, `"by": "orchestrator"`) and skips only a minor the reviewer marks not worth fixing or a real
+  product decision (`review --skip`). `reviewNext` gives a round of minors and decided questions one pass with
+  `THEN` the merge, no second review (`claim.minorPass`); `openFindingErrors` refuses a merge before that pass, a
+  skipped minor without its reason and an open technical question. No step creates a story.
 - **Story metrics:** `/shape`, `/feature`, `/review-stories` and `/implement` mark phases with
   `.claude/skills/metrics/scripts/story-metrics.ts`. Usage comes from harness adapters (`lib/metrics-claude.ts`,
   `lib/metrics-opencode.ts`) that return the same `Stream` shape; entries store raw tokens only, the report prices

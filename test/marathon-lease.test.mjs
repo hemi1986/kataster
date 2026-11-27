@@ -116,10 +116,14 @@ test("merge: a domain story, a tech task or a spike needs an accepting acceptanc
   for (const type of ["domain", "tech-task", "spike"]) {
     const state = claim(type);
     assert.match(mergeErrors(state, "ST-001", state.claims["ST-001"], facts).join("\n"), new RegExp(`a ${type} story is merged only after the acceptance-tester accepted it`));
-    const reviewed = applyReview(state, "ST-001", { agent: "acceptance-tester", verdict: "accepted-with-remarks", blocker: 0, major: 0, minor: 1, question: 0 }, T1).state;
+    const reviewed = applyReview(state, "ST-001", { agent: "acceptance-tester", verdict: "accepted-with-remarks", blocker: 0, major: 0, minor: 0, question: 0 }, T1).state;
     assert.deepEqual(mergeErrors(reviewed, "ST-001", reviewed.claims["ST-001"], facts), [], type);
     const refused = applyReview(state, "ST-001", { agent: "acceptance-tester", verdict: "not-accepted", blocker: 1, major: 0, minor: 0, question: 0 }, T1).state;
-    assert.equal(mergeErrors(refused, "ST-001", refused.claims["ST-001"], facts).length, 1, `${type}: not accepted`);
+    assert.deepEqual(
+      mergeErrors(refused, "ST-001", refused.claims["ST-001"], facts).map((x) => x.split(" – ")[0]),
+      [`a ${type} story is merged only after the acceptance-tester accepted it`, "the last review round left findings for a worker"],
+      `${type}: not accepted`,
+    );
   }
   for (const type of ["chore", "task"]) {
     const state = claim(type);

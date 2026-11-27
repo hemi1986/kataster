@@ -113,11 +113,14 @@ Per reviewer:
    merge – and end your reply with the number of findings per severity – blocker, major, minor, question – and the
    number of merge blockers.* The acceptance tester counts a scenario without a real test, a failing test or a violated rule as
    blocker, a definition-of-done gap or a "fix now" edge case as major, a remark as minor.
-3. `… mark ST-NNN review-<agent> end` once its review file is there, then record the review:
+3. `… mark ST-NNN review-<agent> end` once its review file is there. Read the file and **triage** its minors and
+   questions (*Every finding is fixed in the story*, below), then record the review:
 
    ```bash
-   node .claude/skills/marathon/scripts/marathon-state.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n>
+   node .claude/skills/marathon/scripts/marathon-state.ts review ST-NNN <agent> --verdict <verdict> --blocker <n> --major <n> --minor <n> --question <n> [--skip <n>]
    ```
+
+   `--skip` counts the minors and questions of this review that get no fix pass – the two exceptions of the triage.
 
    The merge blockers are counted from the review file: the rows tagged `merge-blocker: <kind>`, nothing else. A
    `WARN` line names a finding that reads like one without the tag – it does not block; the summary lists it under
@@ -130,24 +133,40 @@ The review files are yours and the reviewers' to write, never the worker's. When
 recorded, commit `docs/reviews/` and `docs/stories/metrics/` on the story branch as `ST-NNN: review round <n>` and
 follow the `NEXT` of the **last** `review` call:
 
-- **`merge`** → step 5. Minors and questions alone start no worker pass: put the ones that matter into the
-  `notes` and `openQuestions` of step 5.
+- **`merge`** → step 5. Nothing is left for a worker: no finding, only skipped ones, or the fix pass for minors has
+  run already.
 - **`fixes`** → `marathon-state.ts claim ST-NNN --continue`, then continue the worker with the task from step 2 plus:
-  *Continuation – fix the findings in `docs/reviews/ST-NNN-*.md`*, the minors you want fixed as well, and the ones
-  to skip. Read its report as in step 3. `ready-for-review` → what `THEN` said: the reviewers it names again
-  (sub-steps 1–3, a new round) or step 5.
+  *Continuation – fix the findings in `docs/reviews/ST-NNN-*.md`*, followed by **every** finding of the round that is
+  not skipped – blockers, majors, minors and the questions you decided, each with its default named – and the
+  skipped ones with their reason, so the worker leaves them alone. Read its report as in step 3. `ready-for-review` →
+  what `THEN` said: the reviewers it names again (sub-steps 1–3, a new round), or step 5 – *the merge – no second
+  review* after a pass for minors and decided questions alone. That pass is the story's only one: it is not reviewed
+  again, and whatever a reviewer would still find is not a reason for another.
 
-  **Reviewer questions never go into a worker's task.** A question (severity `question`) is not a finding to fix:
-  it travels with you into the `openQuestions` of step 5 – a worker that is handed one has to report `blocked`, and
-  the story is lost for a question that blocks nothing. For a finding that needs a technical choice, name the
-  default you want (*use the existing `invalid` path, 422*) instead of asking the worker to decide or to block.
+  **Every finding is fixed in the story** – the rule of step 6 in `/implement`. One fix pass gets all of them;
+  there are two exceptions, and both are counted with `--skip`:
 
-  **Merge blockers are the exception – they are never a question, a decision or a skipped minor.** A finding tagged
+  | Finding | What you do |
+  |---|---|
+  | blocker, major | into the worker's task |
+  | minor | into the worker's task – unless the reviewer itself marks it as not worth fixing (cosmetic, known debt): skipped, a `notes` line *minor skipped: <finding> – <the reviewer's reason>* |
+  | question with a sensible conservative default (the reviewer's recommendation, the existing `invalid` path, *warn in QA, naming the field*) | **you decide it**: into the worker's task as a finding with the default named, and into `decisions` of step 5 with `"by": "orchestrator"` |
+  | question that is a real product or domain decision, with no defensible default | skipped, an `openQuestions` entry (`kind: domain` or `product`); when the story cannot be built right without the answer, `escalate` instead |
+
+  The worker never decides a question on its own and reports `blocked` for an undecided one – so it gets decided
+  defaults, never raw questions. A technical question always has a default: `merge-check` refuses one left open.
+
+  **A merge blocker is never a question, a decision or a skipped minor.** A finding tagged
   `merge-blocker: <kind>` (security and data protection, a 5xx answer to client input, an inconsistency that breaks
   a domain rule) goes into the worker's task as a finding to fix, whatever severity the reviewer gave it, with the
   conservative fix named. The reviewer who found it runs again after the fix pass; reports one again → `escalate`.
 - **`escalate`** → the story was `not accepted` twice, or a merge blocker survived its fix pass: `escalate` with what
   remains as the reason, back to the integration branch, step 1.
+
+**You never create a story** – not from a finding, a question or anything else the reviews leave. A finding is fixed
+in its story or is an open question for the user. A gap in the feature's story split – behaviour no story of the
+feature covers – is an `openQuestions` entry with the suggestion to widen a story of the same feature that is not
+built yet; never a new story.
 
 ### 5. Integrate
 
@@ -155,8 +174,10 @@ Every sub-step is safe to repeat; after a resume skip what is already done.
 
 1. Write the details file of sub-step 6 now and check it before anything is merged:
    `node .claude/skills/marathon/scripts/marathon-state.ts merge-check ST-NNN --details .kataster/details/ST-NNN-merged.json`.
-   Refused → a tagged merge blocker is open: back to step 4 **`fixes`** with it, nothing merged. `POSSIBLE` lines
-   do not refuse – they go into the summary for the user.
+   Refused → nothing is merged; it names what to do: a tagged merge blocker or a round's findings without their
+   fix pass → back to step 4 **`fixes`**; a skipped minor without its reason or an open technical question → fix the
+   details file (a technical question gets its default and goes to `fixes`). `POSSIBLE` lines do not refuse – they go
+   into the summary for the user.
    Then `… story-metrics.ts mark ST-NNN integration start`, `git switch <integration branch>`,
    `git merge --no-ff <story branch> -m "Merge ST-NNN: <title>"`.
 2. `mark ST-NNN verify start`, `node .claude/skills/implement/scripts/verify.ts` (with `--e2e` when browser tests
@@ -181,10 +202,14 @@ Every sub-step is safe to repeat; after a resume skip what is already done.
    review – go back to `fixes` (`claim ST-NNN --continue`) instead:
 
    ```json
-   { "notes": ["<ADR 0007 proposed: …>", "<new term: …>", "<minor skipped: … – why>"],
-     "openQuestions": [{ "question": "<a reviewer's question the user has to answer>", "kind": "domain|technical" }],
-     "decisions": [<the worker report's decisions, as they are>] }
+   { "notes": ["<ADR 0007 proposed: …>", "<new term: …>", "<minor skipped: <finding> – <the reviewer's reason>>"],
+     "openQuestions": [{ "question": "<a product or domain decision only the user can make, with the options>", "kind": "domain|product" }],
+     "decisions": [<the worker report's decisions, as they are>,
+                   { "question": "<the reviewer's question>", "decision": "<the default you handed the worker>", "why": "<the reviewer's recommendation, why it is conservative>", "by": "orchestrator" }] }
    ```
+
+   The summary lists only what needs the user: the open questions and the possible merge blockers. Decisions stay in
+   their own section, one line each; notes stay with their story.
 
    ```bash
    node .claude/skills/marathon/scripts/marathon-state.ts result ST-NNN merged --details .kataster/details/ST-NNN-merged.json
@@ -202,8 +227,8 @@ foundation gate, a red verify on the integration branch – or when the user end
 2. Run the `collect --since …` command `finish` printed: it adds what the run's sessions spent outside a phase –
    this session is still open, so the hooks have not collected it yet. Commit what it wrote as `metrics: collect`.
    Then `node .claude/skills/marathon/scripts/marathon-state.ts summary --out .claude/state/marathon-pr.md` – the
-   summary, the escalations with their reasons, the open questions, the possible merge blockers, the decisions taken
-   with a default and the metrics of every story of the run.
+   summary, the escalations with their reasons, the open questions that need the user, the possible merge blockers,
+   the decisions taken with a default (by a worker or by you) and the metrics of every story of the run.
 3. `git push -u origin <integration branch>` and open the pull request to the default branch: title
    `Marathon <run>: <n> stories`, body = that file (`gh pr create --base <default branch> --body-file …`; as
    `--draft` when the run ended on a red verify). Without `gh`: the compare URL `git push` prints.
