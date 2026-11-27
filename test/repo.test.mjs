@@ -296,6 +296,64 @@ test("adopts a concept slice and keeps it across a map refresh", () => {
   assert.equal(refreshed.slices.find((slice) => slice.name === "order").adopted, true);
 });
 
+test("keeps a slice adopted by meaning across a refresh, and --check agrees", () => {
+  const dir = repo({
+    "package.json": JSON.stringify({ name: "shop", scripts: { test: "vitest" } }),
+    "src/api/ordersController.ts": "export const orders = 1;\n",
+    "src/services/orderService.ts": "export const order = 1;\n",
+  });
+  init(dir);
+  assert.equal(script(dir, "repo-map.ts").code, 0);
+  assert.ok(!json(dir, "docs/architecture/repo-map.json").slices.some((slice) => slice.name === "fulfilment"));
+
+  const adopted = script(dir, "repo-map.ts", "--adopt-slice", "fulfilment");
+  assert.equal(adopted.code, 0, adopted.out);
+  const before = json(dir, "docs/architecture/repo-map.json").slices.find((slice) => slice.name === "fulfilment");
+  assert.equal(before.adopted, true);
+
+  const refreshed = script(dir, "repo-map.ts");
+  assert.equal(refreshed.code, 0, refreshed.out);
+  const after = json(dir, "docs/architecture/repo-map.json").slices.find((slice) => slice.name === "fulfilment");
+  assert.deepEqual(after, before, "the manual entry survives unchanged, with its adoptedAt");
+  assert.match(read(dir, "AGENTS.md"), /concept `fulfilment`/);
+
+  const check = script(dir, "repo-map.ts", "--check");
+  assert.equal(check.code, 0, check.out);
+});
+
+test("skips packages in git-ignored directories, whether they exist or not", (t) => {
+  if (spawnSync("git", ["--version"]).status !== 0) return t.skip("git is not installed");
+  const dir = repo({
+    "package.json": JSON.stringify({ name: "acme", private: true, workspaces: ["apps/*"] }),
+    "pnpm-workspace.yaml": 'packages:\n  - "apps/*"\n',
+    "apps/billing/package.json": JSON.stringify({ name: "@acme/billing", scripts: { test: "vitest" } }),
+    "apps/billing/src/invoiceService.ts": "export const invoice = 1;\n",
+    ".gitignore": "runtime/\n",
+  });
+  assert.equal(spawnSync("git", ["init", "-q"], { cwd: dir }).status, 0);
+  init(dir);
+  assert.equal(script(dir, "repo-map.ts").code, 0);
+  assert.equal(script(dir, "repo-map.ts", "--check").code, 0);
+
+  // A local build copies the workspace into the ignored directory.
+  for (const [path, content] of Object.entries({
+    "runtime/apps/billing/package.json": JSON.stringify({ name: "@acme/billing-copy", scripts: { test: "vitest" } }),
+    "runtime/apps/billing/src/invoiceService.ts": "export const invoice = 1;\n",
+    "runtime/apps/billing/src/shipmentService.ts": "export const shipment = 1;\n",
+  })) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), content, "utf8");
+  }
+  const check = script(dir, "repo-map.ts", "--check");
+  assert.equal(check.code, 0, check.out);
+
+  assert.equal(script(dir, "repo-map.ts").code, 0);
+  const map = json(dir, "docs/architecture/repo-map.json");
+  assert.ok(!map.packages.some((p) => p.path.startsWith("runtime")), JSON.stringify(map.packages.map((p) => p.path)));
+  assert.ok(!(map.slices ?? []).some((slice) => slice.files.some((file) => file.startsWith("runtime/"))));
+  assert.equal(script(dir, "repo-map.ts", "--check").code, 0);
+});
+
 test("detects Bazel and uses it for package commands", () => {
   const dir = repo({
     "MODULE.bazel": 'module(name = "acme")\n',

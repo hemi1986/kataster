@@ -9,7 +9,7 @@
  * The map is generated from manifests and git history. It is not a domain model: it says where code lives,
  * how packages depend on each other and which slice to adopt first. Domain meaning comes from the grilling.
  */
-import { ROOT, findPackage, markAdopted, markSliceAdopted, packageCounts, proposeSlices, readRepoMap, scanRepo, stableMap, updateProjectTooling, writeRepoMap, writeRootBlock } from "../../../lib/repo.ts";
+import { ROOT, findPackage, markAdopted, markSliceAdopted, packageCounts, proposeSlices, readRepoMap, refreshRepoMap, stableMap, updateProjectTooling, writeRepoMap, writeRootBlock } from "../../../lib/repo.ts";
 import { graphLabel, graphToolLabel } from "../../../lib/toolgraph.ts";
 
 const args = process.argv.slice(2);
@@ -72,28 +72,11 @@ if (adoptSliceIndex !== -1) {
   process.exit(0);
 }
 
-const map = scanRepo(root, {
+// Refreshing the map must not forget which slices were already adopted – the write and --check see the same map.
+const map = refreshRepoMap(root, {
   // --check stays fast and environment-independent; the graph is enrichment, not part of the stable map.
   toolGraph: !args.includes("--check") && !args.includes("--no-tool-graph"),
 });
-// Refreshing the map must not forget which slices were already adopted.
-const previous = readRepoMap(root);
-if (previous) {
-  for (const pkg of map.packages) {
-    const old = previous.packages.find((p) => p.path === pkg.path);
-    if (old?.adopted) {
-      pkg.adopted = true;
-      pkg.adoptedAt = old.adoptedAt;
-    }
-  }
-  for (const slice of map.slices ?? []) {
-    const old = previous.slices?.find((entry) => entry.name === slice.name);
-    if (old?.adopted) {
-      slice.adopted = true;
-      slice.adoptedAt = old.adoptedAt;
-    }
-  }
-}
 
 if (args.includes("--json")) {
   console.log(JSON.stringify(map, null, 2));
