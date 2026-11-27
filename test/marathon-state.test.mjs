@@ -160,16 +160,17 @@ test("nextStep: the story in hand comes before every limit", () => {
 test("reviews: blockers send the worker back; the acceptance stands, so the merge follows the fixes", () => {
   let state = claimed(run());
   let r = applyReview(state, "ST-001", review("code-reviewer", "fix-blockers-first", { blocker: 1, minor: 2 }), T1);
-  assert.deepEqual(r.next, { action: "fixes", then: "merge", again: [], reason: null, notAccepted: 0, round: { blocker: 1, major: 0, minor: 2, question: 0, mergeBlocker: 0 } });
+  assert.deepEqual(r.next, { action: "fixes", then: "merge", fix: "findings", again: [], reason: null, notAccepted: 0, round: { blocker: 1, major: 0, minor: 2, question: 0, mergeBlocker: 0, skip: 0 } });
   r = applyReview(r.state, "ST-001", review("acceptance-tester", "accepted-with-remarks", { minor: 1 }), T1);
   assert.equal(r.next.action, "fixes", "the round is judged as a whole – the code review still needs fixes");
   assert.equal(r.next.then, "merge");
   assert.equal(r.state.claims["ST-001"].phase, "review");
-  assert.deepEqual(r.next.round, { blocker: 1, major: 0, minor: 3, question: 0, mergeBlocker: 0 });
+  assert.deepEqual(r.next.round, { blocker: 1, major: 0, minor: 3, question: 0, mergeBlocker: 0, skip: 0 });
 
   // The fixes pass starts a new round: with nothing recorded in it, nothing is left to fix.
   state = applyContinue(r.state, "ST-001", T2);
   assert.equal(reviewNext(state.claims["ST-001"]).action, "merge");
+  assert.equal(state.claims["ST-001"].minorPass, undefined, "a pass for blockers is not the minor pass");
   assert.equal(state.claims["ST-001"].reviews.length, 2, "earlier rounds stay on the claim");
 });
 
@@ -188,11 +189,70 @@ test("reviews: 'not accepted' is fixed once and re-reviewed; the second one esca
   assert.equal(escalated.escalations[0].reviews.length, 2, "the reviews travel with the escalation");
 });
 
-test("reviews: a clean round goes to the merge; minors and questions are the orchestrator's call", () => {
-  const r = applyReview(claimed(run()), "ST-001", review("acceptance-tester", "accepted-with-remarks", { minor: 2, question: 1 }), T1);
+test("reviews: a clean round goes to the merge", () => {
+  const r = applyReview(claimed(run()), "ST-001", review("acceptance-tester", "accepted"), T1);
   assert.equal(r.next.action, "merge");
   assert.throws(() => applyReview(run(), "ST-001", review("acceptance-tester", "accepted"), T1), /ST-001 is not claimed/);
   assert.throws(() => applyReview(claimed(run()), "ST-001", review("acceptance-tester", "fine"), T1), /'fine' is not a verdict/);
+});
+
+test("reviews: a minors-only round gets one fix pass, then the merge without a second review", () => {
+  let r = applyReview(claimed(run(), "ST-001", "domain"), "ST-001", review("code-reviewer", "ready-to-merge", { minor: 2 }), T1);
+  assert.deepEqual([r.next.action, r.next.then, r.next.fix, r.next.again], ["fixes", "merge", "minor", []]);
+  r = applyReview(r.state, "ST-001", review("acceptance-tester", "accepted-with-remarks", { minor: 1 }), T1);
+  assert.deepEqual([r.next.action, r.next.then, r.next.fix], ["fixes", "merge", "minor"]);
+  assert.equal(r.state.claims["ST-001"].phase, "review");
+
+  // The fix pass is the claim's minor pass: nothing to review, the merge follows.
+  const fixed = applyContinue(r.state, "ST-001", T2);
+  assert.equal(fixed.claims["ST-001"].minorPass, true);
+  assert.equal(reviewNext(fixed.claims["ST-001"]).action, "merge");
+  // A review nobody asked for that finds minors again does not start a second pass – the merge follows.
+  const extra = applyReview(fixed, "ST-001", review("code-reviewer", "ready-to-merge", { minor: 1 }), T2);
+  assert.equal(extra.next.action, "merge");
+  // A blocker still sends the worker back, minor pass or not.
+  assert.equal(applyReview(fixed, "ST-001", review("code-reviewer", "fix-blockers-first", { blocker: 1 }), T2).next.action, "fixes");
+});
+
+test("reviews: a questions-only round gets the fix pass; skipped minors and product questions do not", () => {
+  const q = applyReview(claimed(run()), "ST-001", review("acceptance-tester", "accepted-with-remarks", { question: 2 }), T1);
+  assert.deepEqual([q.next.action, q.next.then, q.next.fix], ["fixes", "merge", "minor"]);
+
+  // One question decided, one a real product decision: the decided one still needs its pass.
+  const one = applyReview(claimed(run()), "ST-001", review("acceptance-tester", "accepted-with-remarks", { question: 2, skip: 1 }), T1);
+  assert.deepEqual([one.next.action, one.next.round.skip], ["fixes", 1]);
+  // Everything skipped: nothing left for a worker.
+  const all = applyReview(claimed(run()), "ST-001", review("acceptance-tester", "accepted-with-remarks", { minor: 1, question: 1, skip: 2 }), T1);
+  assert.deepEqual([all.next.action, all.next.round.skip], ["merge", 2]);
+  assert.deepEqual(marathonStateErrors(all.state), []);
+});
+
+test("merge gate: a round waiting for its fix pass, a skipped minor without a reason, a technical open question", () => {
+  const green = {
+    current: BRANCH, dirty: [], storyStatus: "done", branchExists: true, branchMerged: true,
+    verify: { branch: BRANCH, ok: true, commit: "abc", dirty: false, failed: [] }, verifyCoversMerge: true, changedSinceVerify: [],
+  };
+  const pending = applyReview(claimed(run(), "ST-001", "domain"), "ST-001", review("acceptance-tester", "accepted-with-remarks", { minor: 1 }), T1).state;
+  assert.match(mergeErrors(pending, "ST-001", pending.claims["ST-001"], green, none).join("\n"), /one fix pass with all of them first: claim ST-001 --continue/);
+  const fixed = applyContinue(pending, "ST-001", T2);
+  assert.deepEqual(mergeErrors(fixed, "ST-001", fixed.claims["ST-001"], green, none), []);
+
+  const bad = { ...none, notes: ["minor skipped: cosmetic"], openQuestions: [{ question: "Which status for a null body?", kind: "technical" }] };
+  const errs = mergeErrors(fixed, "ST-001", fixed.claims["ST-001"], green, bad);
+  assert.equal(errs.length, 2, errs.join("\n"));
+  assert.match(errs[0], /^notes\[0\] skips a minor without its reason/);
+  assert.match(errs[1], /^openQuestions\[0\] is a technical question – only a product or domain decision stays open/);
+  const good = {
+    ...none,
+    notes: ["minor skipped: the helper name – the reviewer marks it cosmetic"],
+    openQuestions: [{ question: "May a member hold two reservations?", kind: "product" }],
+    decisions: [{ question: "Warn or fail on an unknown field?", decision: "warn in QA, naming the field", why: "the reviewer's recommendation; cheap to change", by: "orchestrator" }],
+  };
+  assert.deepEqual(mergeErrors(fixed, "ST-001", fixed.claims["ST-001"], green, good), []);
+  const summary = renderSummary(applyMerged(fixed, "ST-001", good, T2), new Map(), "");
+  assert.match(summary, /## Open questions – your decision\n\n- \*\*ST-001\*\* \(product\): May a member hold two reservations\?/);
+  assert.match(summary, /- \*\*ST-001\*\*: Warn or fail on an unknown field\? → \*\*warn in QA, naming the field\*\* – .* \(decided by the orchestrator, on the reviewer's recommendation\)/);
+  assert.match(parseDetails({ decisions: [{ question: "q", decision: "d", why: "w", by: "user" }] }).errors[0], /decisions\[0\]\.by must be worker or orchestrator/);
 });
 
 test("merge blockers: a fix pass, the reviewer who found it again, and escalation when it survives", () => {
@@ -619,7 +679,7 @@ test("review counts the tagged merge blockers of the review file and warns about
   );
   const r = ok(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge", "--question", "1"], { now: T1 }));
   assert.match(r.out, /REVIEW {7}ST-001 code-reviewer: ready to merge – 0 blocker, 0 major, 0 minor, 1 question, 1 merge blocker/);
-  assert.match(r.out, /NEXT {9}fixes – a worker pass with the findings \(0 blocker, 0 major, 1 merge blocker this round\)/);
+  assert.match(r.out, /NEXT {9}fixes – one worker pass with every finding \(0 blocker, 0 major, 0 minor, 1 question, 1 merge blocker this round; each question with the default you decided\)/);
   assert.match(r.out, /THEN {9}code-reviewer again – a merge blocker is merged only after the reviewer who found it saw the fix/);
   assert.match(r.out, /WARN {9}untagged finding that looks like a merge blocker \(privacy\): 2 · minor · logging · .*names of members are logged/);
   assert.equal(readState(dir).claims["ST-001"].reviews[0].mergeBlocker, 1, "only the tagged row counts");
@@ -641,7 +701,7 @@ test("review counts the tagged merge blockers of the review file and warns about
   write(dir, "docs/reviews/ST-001-code-review.md", "No findings.\n");
   ok(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge"], { now: T2 }));
   assert.match(ok(ms(dir, ["merge-check", "ST-001"])).out, /MERGE-CHECK {2}ST-001 – no merge blocker/);
-  const question = JSON.stringify({ openQuestions: [{ question: "Should a body of null answer 500 or 422?", kind: "technical" }] });
+  const question = JSON.stringify({ openQuestions: [{ question: "Should a body of null answer 500 or 422?", kind: "domain" }] });
   const possible = ok(ms(dir, ["merge-check", "ST-001", "--details", "-"], { input: question }));
   assert.match(possible.out, /POSSIBLE {5}openQuestions\[0\] \(server-error\): .* – not tagged, does not block/);
   const tagged = JSON.stringify({ openQuestions: [{ question: "merge-blocker: server-error – a body of null answers 500", kind: "technical" }] });
@@ -659,10 +719,11 @@ test("a story's way through the run: claim, reviews, a fixes pass, the merge gat
   // Round 1: the code reviewer wants a blocker fixed, the acceptance tester accepts.
   let r = ok(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "fix-blockers-first", "--blocker", "1", "--minor", "2"], { now: T1 }));
   assert.match(r.out, /REVIEW {7}ST-001 code-reviewer: fix blockers first – 1 blocker, 0 major, 2 minor, 0 question/);
-  assert.match(r.out, /NEXT {9}fixes – a worker pass with the findings \(1 blocker, 0 major this round\): .*claim ST-001 --continue/);
+  assert.match(r.out, /NEXT {9}fixes – one worker pass with every finding \(1 blocker, 0 major, 2 minor, 0 question this round; .*\): .*claim ST-001 --continue/);
+  assert.match(r.out, /THEN {9}the merge – the acceptance stands, no second review/);
   r = ok(ms(dir, ["review", "ST-001", "acceptance-tester", "--verdict", "accepted", "--json"], { now: T1 }));
   assert.deepEqual(JSON.parse(r.stdout).next, {
-    action: "fixes", then: "merge", again: [], reason: null, notAccepted: 0, round: { blocker: 1, major: 0, minor: 2, question: 0, mergeBlocker: 0 },
+    action: "fixes", then: "merge", fix: "findings", again: [], reason: null, notAccepted: 0, round: { blocker: 1, major: 0, minor: 2, question: 0, mergeBlocker: 0, skip: 0 },
   });
   assert.equal(ms(dir, ["review", "ST-001", "acceptance-tester", "--verdict", "fine"]).code, 2);
   assert.equal(ms(dir, ["review", "ST-001", "--verdict", "accepted"]).code, 2);
@@ -708,6 +769,38 @@ test("a story's way through the run: claim, reviews, a fixes pass, the merge gat
   // The next story is planned from the integration branch, where ST-001 is done.
   assert.match(planner(dir).out, /NEXT {9}ST-002/);
   assert.match(ok(ms(dir, ["status"])).out, /STORIES {6}1 of 6 started: 1 merged, 0 escalated, 0 failed[\s\S]*NEXT {9}ST-002 – claim it/);
+});
+
+test("review on the command line: minors and questions get one fix pass, then the merge without a second review", () => {
+  const dir = repo();
+  ok(ms(dir, ["start-run"]));
+  ok(ms(dir, ["claim", "ST-001"]));
+  workerPass(dir, "ST-001");
+
+  let r = ok(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge", "--minor", "2", "--question", "1", "--skip", "1"], { now: T1 }));
+  assert.match(r.out, /REVIEW {7}ST-001 code-reviewer: ready to merge – 0 blocker, 0 major, 2 minor, 1 question, 1 skipped/);
+  assert.match(r.out, /NEXT {9}fixes – one worker pass with every finding \(0 blocker, 0 major, 2 minor, 1 question, 1 skipped this round; each question with the default you decided\)/);
+  assert.match(r.out, /THEN {9}the merge – no second review: minors and decided questions are not reviewed again/);
+  assert.equal(readState(dir).claims["ST-001"].reviews[0].skip, 1);
+  assert.equal(ms(dir, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge", "--minor", "1", "--skip", "2"]).code, 2, "more skipped than reported");
+
+  // Before the fix pass, the merge gate names it.
+  const refused = ms(dir, ["merge-check", "ST-001"]);
+  assert.equal(refused.code, 1);
+  assert.match(refused.out, /one fix pass with all of them first: claim ST-001 --continue/);
+  ok(ms(dir, ["claim", "ST-001", "--continue"], { now: T2 }));
+  assert.equal(readState(dir).claims["ST-001"].minorPass, true);
+  assert.match(ok(ms(dir, ["merge-check", "ST-001"])).out, /MERGE-CHECK {2}ST-001 – no merge blocker and no open finding/);
+
+  // A questions-only round of another story still gets its pass; with every question skipped it merges.
+  const other = repo();
+  ok(ms(other, ["start-run"]));
+  ok(ms(other, ["claim", "ST-001"]));
+  workerPass(other, "ST-001");
+  r = ok(ms(other, ["review", "ST-001", "acceptance-tester", "--verdict", "accepted-with-remarks", "--question", "2", "--skip", "2"], { now: T1 }));
+  assert.match(r.out, /NEXT {9}merge – nothing left for a worker \(2 skipped: a note with the reason for each minor, an open question for each product decision\)/);
+  r = ok(ms(other, ["review", "ST-001", "code-reviewer", "--verdict", "ready-to-merge", "--question", "1"], { now: T1 }));
+  assert.match(r.out, /NEXT {9}fixes – one worker pass with every finding \(0 blocker, 0 major, 0 minor, 3 question, 2 skipped this round/);
 });
 
 test("code that changes after the green verify makes it stale – bookkeeping does not", () => {

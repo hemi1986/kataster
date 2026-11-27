@@ -135,6 +135,10 @@ the main session becomes an **orchestrator** that only coordinates. It claims th
 reviews as `/implement`, and merges the story into an **integration branch** `marathon/<date>` where the full gate
 runs again. At the end there is one pull request for the whole run.
 
+Review findings are handled as in `/implement`: every one is fixed in its story, in one fix pass. The orchestrator
+decides a reviewer question that has a sensible conservative default and hands the default to the worker; only a
+real product or domain decision is left for you. A run never turns leftovers into new stories.
+
 What the orchestrator would have to ask becomes an **escalation**: the story is set aside with its reason – a
 `blocked` report, a story sent back to review, a second `not accepted` – and the run goes on with the next one. A
 red `verify.ts` on the integration branch is different: the run stops at once, because every later story would

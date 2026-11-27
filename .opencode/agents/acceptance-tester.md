@@ -60,6 +60,8 @@ Date: YYYY-MM-DD · Tests run: <command> → <passed/failed counts> · Preview: 
 | Case | Expected by a rule? (cite) | Recommendation: fix now / question |
 ```
 
+Every gap is fixed in the story. For a question, give the answer you recommend when one is defensible (*warn in QA, naming the field*) – it is decided with it and fixed; only a real product or domain decision stays open. A remark that is not worth fixing (cosmetic, known debt) says `no fix – <why>`.
+
 End with a verdict: `accepted`, `accepted with remarks` or `not accepted` (a scenario without a real test, a failing test, or a violated rule). **Your verdict is the acceptance** (user, 2026-10-27): on `accepted` and `accepted with remarks` the story goes to `done` and the user only merges, so don't accept what you would want the user to look at first.
 
 ## Merge blockers

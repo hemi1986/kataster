@@ -50,7 +50,7 @@ Base: <ref> · Commits: <n> · Date: YYYY-MM-DD
 |---|---|---|---|---|---|---|
 ```
 
-Severity: **blocker** (violates an ADR, a domain rule, security or a scenario – must be fixed before merge), **major** (should be fixed in this story), **minor** (judgement call, the main session decides), **question** (needs a decision the developer must make – no story, no ticket, just the question and the evidence).
+Severity: **blocker** (violates an ADR, a domain rule, security or a scenario – must be fixed before merge), **major** (should be fixed in this story), **minor** (should be fixed in this story too, it is small), **question** (needs a decision – no story, no ticket, just the question, the evidence and your recommended answer when one is defensible; a question with a recommendation is decided with it and fixed). Every finding is fixed in the story; a minor that is not worth fixing (cosmetic, known debt) says so in "Suggested direction": `no fix – <why>`.
 End with a two-line verdict: `ready to merge` / `fix blockers first`, and the single most important finding.
 
 ## Merge blockers

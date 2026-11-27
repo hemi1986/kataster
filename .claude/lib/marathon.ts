@@ -354,6 +354,8 @@ export function applyContinue(state: e.MarathonState, id: string, now: string): 
   claimOf(state, id);
   const next = clone(state);
   const claim = next.claims[id];
+  // A pass for minors and decided questions alone is the claim's only one – the next round with nothing else merges.
+  if (claim.phase === "review" && reviewNext(claim).fix === "minor") claim.minorPass = true;
   claim.attempts += 1;
   claim.phase = "worker";
   claim.passStart = now;
@@ -378,7 +380,7 @@ const DETAIL_KEYS = ["openQuestions", "decisions", "notes"];
 
 /**
  * What goes into the run's summary besides the reason:
- * `{ "openQuestions": [{ question, kind }], "decisions": [{ question, decision, why }], "notes": ["…"] }`.
+ * `{ "openQuestions": [{ question, kind }], "decisions": [{ question, decision, why, by? }], "notes": ["…"] }`.
  * A worker report is accepted as it is – its `openQuestions` and `decisions` are taken, the rest is in git.
  */
 export function parseDetails(raw: unknown): { details: Details; errors: string[] } {
@@ -396,7 +398,15 @@ export function parseDetails(raw: unknown): { details: Details; errors: string[]
       obj.decisions.forEach((x, i) => {
         const item = x as Record<string, unknown> | null;
         if (!item || typeof item !== "object" || !str(item.question) || !str(item.decision) || !str(item.why)) errors.push(`decisions[${i}] needs question, decision and why`);
-        else details.decisions.push({ question: item.question.trim(), decision: item.decision.trim(), why: item.why.trim() });
+        else if (item.by !== undefined && !(e.MARATHON_DECIDERS as readonly unknown[]).includes(item.by)) errors.push(`decisions[${i}].by must be ${e.MARATHON_DECIDERS.join(" or ")}`);
+        else {
+          details.decisions.push({
+            question: item.question.trim(),
+            decision: item.decision.trim(),
+            why: item.why.trim(),
+            ...(item.by === "orchestrator" ? { by: "orchestrator" as const } : {}),
+          });
+        }
       });
     }
   }
@@ -465,9 +475,42 @@ export function mergeErrors(state: e.MarathonState, id: string, claim: e.Maratho
         "The fast lane is for chore and task; run the reviews (step 4) and record them with `marathon-state.ts review`",
     );
   }
+  errs.push(...openFindingErrors(id, claim, details));
   errs.push(...mergeBlockerErrors(id, claim, details));
   if (f.repoMapStale) errs.push("the repository map is stale after the merge – run `node .claude/skills/adopt/scripts/repo-map.ts` and commit it with the bookkeeping");
   if (f.dirty.length) errs.push(`uncommitted changes: ${f.dirty.slice(0, 5).join(", ")}${f.dirty.length > 5 ? ", …" : ""} – commit them as '${id}: done'`);
+  return errs;
+}
+
+/** Kinds of open question a merged story may leave for the user – a technical question is decided with a default. */
+export const OPEN_QUESTION_KINDS = ["domain", "product"];
+const SKIPPED_NOTE = /^minor skipped\b/i;
+const SKIPPED_WITH_REASON = /^minor skipped\b.*\S.*\s[–-]\s+\S/i;
+
+/**
+ * What the reviews and the details of a merge may not leave behind, apart from merge blockers: a round whose
+ * findings still wait for their fix pass, a skipped minor without its reason, an open technical question. A finding
+ * is fixed in the story or is a question only the user can answer – nothing waits for a follow-up story.
+ */
+export function openFindingErrors(id: string, claim: e.MarathonClaim, details?: Details): string[] {
+  const errs: string[] = [];
+  const next = reviewNext(claim);
+  if (next.action === "fixes") {
+    errs.push(`the last review round left findings for a worker – one fix pass with all of them first: claim ${id} --continue`);
+  }
+  // A merge blocker that survived its fix pass is mergeBlockerErrors' to name.
+  if (next.action === "escalate" && next.reason === "not-accepted") errs.push(`'not accepted' ${next.notAccepted} times – the story is escalated, not merged: escalate ${id}`);
+  (details?.notes ?? []).forEach((note, i) => {
+    if (SKIPPED_NOTE.test(note) && !SKIPPED_WITH_REASON.test(note)) errs.push(`notes[${i}] skips a minor without its reason – write it as "minor skipped: <finding> – <why the reviewer marks it not worth fixing>"`);
+  });
+  (details?.openQuestions ?? []).forEach((q, i) => {
+    if (!OPEN_QUESTION_KINDS.includes(q.kind)) {
+      errs.push(
+        `openQuestions[${i}] is a ${q.kind} question – only a product or domain decision stays open: decide it with the ` +
+          `conservative default (a decision by the orchestrator) and hand it to a fix pass (claim ${id} --continue), or escalate the story`,
+      );
+    }
+  });
   return errs;
 }
 
@@ -581,6 +624,8 @@ export interface ReviewInput {
 }
 
 const blocks = (r: e.MarathonReview): boolean => (r.mergeBlocker ?? 0) > 0;
+/** Minors and questions of a review that get a fix pass – all but the ones the orchestrator skipped. */
+const unfixed = (r: e.MarathonReview): number => Math.max(0, r.minor + r.question - (r.skip ?? 0));
 const needsFixes = (r: e.MarathonReview): boolean =>
   r.verdict === "not-accepted" || r.verdict === "fix-blockers-first" || r.blocker + r.major > 0 || blocks(r);
 
@@ -588,35 +633,40 @@ const needsFixes = (r: e.MarathonReview): boolean =>
  * What follows the reviews of the current round (the reviews since the last worker pass started):
  *   escalate – the story was `not accepted` twice, or a reviewer reports a merge blocker again after the fix pass
  *              for its last one; a further round is the user's decision (`reason` says which)
- *   fixes    – a reviewer does not accept, there are blockers or majors, or a merge blocker: a worker pass with the
- *              findings. `again` names the reviewers who run again before the merge – the acceptance tester when it
- *              did not accept, every reviewer who reported a merge blocker; `then` is `acceptance` when that is the
- *              acceptance tester alone, `review` for more, `merge` for none
- *   merge    – nothing a worker has to fix; minors and questions are the orchestrator's call
+ *   fixes    – one worker pass with every finding of the round. `fix: "findings"` – a reviewer does not accept,
+ *              there are blockers or majors, or a merge blocker: `again` names the reviewers who run again before the
+ *              merge – the acceptance tester when it did not accept, every reviewer who reported a merge blocker;
+ *              `then` is `acceptance` when that is the acceptance tester alone, `review` for more, `merge` for none.
+ *              `fix: "minor"` – only minors and questions the orchestrator decided, and no such pass has run on the
+ *              claim yet: `then` is `merge`, nobody reviews that pass again
+ *   merge    – nothing left for a worker: no finding, only skipped ones, or the minor pass has run already
  */
 export interface ReviewNext {
   action: "escalate" | "fixes" | "merge";
   then: "acceptance" | "review" | "merge" | null;
+  /** What the fix pass is for: blockers, majors or merge blockers (and the rest with them), or minors and decided questions alone. */
+  fix: "findings" | "minor" | null;
   /** Reviewers who review again after the fix pass, before the merge. */
   again: string[];
   /** Why the story escalates; null otherwise. */
   reason: "not-accepted" | "merge-blocker" | null;
   notAccepted: number;
   /** Findings of the round, summed over its reviewers. */
-  round: { blocker: number; major: number; minor: number; question: number; mergeBlocker: number };
+  round: { blocker: number; major: number; minor: number; question: number; mergeBlocker: number; skip: number };
 }
 
 export function reviewNext(claim: e.MarathonClaim): ReviewNext {
   const all = claim.reviews ?? [];
   const since = claim.passStart ?? claim.start;
   const round = all.filter((r) => r.at >= since);
-  const sum = { blocker: 0, major: 0, minor: 0, question: 0, mergeBlocker: 0 };
+  const sum = { blocker: 0, major: 0, minor: 0, question: 0, mergeBlocker: 0, skip: 0 };
   for (const r of round) {
     for (const k of ["blocker", "major", "minor", "question"] as const) sum[k] += r[k];
     sum.mergeBlocker += r.mergeBlocker ?? 0;
+    sum.skip += Math.min(r.skip ?? 0, r.minor + r.question);
   }
   const notAccepted = all.filter((r) => r.verdict === "not-accepted").length;
-  const base = { again: [] as string[], notAccepted, round: sum };
+  const base = { again: [] as string[], fix: null, notAccepted, round: sum };
   // One fix pass per merge blocker: a reviewer who reported one and, after the fix pass, reports one again → the user
   // decides. A reviewer's first merge blocker in a later round still gets its fix pass.
   const before = (agent: string) => all.filter((r) => r.agent === agent && r.at < since).at(-1);
@@ -625,8 +675,9 @@ export function reviewNext(claim: e.MarathonClaim): ReviewNext {
   if (round.some(needsFixes)) {
     const again = [...new Set(round.filter((r) => r.verdict === "not-accepted" || blocks(r)).map((r) => r.agent))];
     const then = !again.length ? "merge" : again.length === 1 && again[0] === "acceptance-tester" ? "acceptance" : "review";
-    return { ...base, action: "fixes", then, again, reason: null };
+    return { ...base, action: "fixes", then, fix: "findings", again, reason: null };
   }
+  if (!claim.minorPass && round.some((r) => unfixed(r) > 0)) return { ...base, action: "fixes", then: "merge", fix: "minor", reason: null };
   return { ...base, action: "merge", then: null, reason: null };
 }
 
@@ -751,7 +802,9 @@ export function nextStep(state: e.MarathonState, f: StopFacts): NextStep {
 // Summary – the body of the run's pull request
 // --------------------------------------------------------------------------
 const reviewLine = (reviews: e.MarathonReview[] | undefined): string =>
-  (reviews ?? []).map((r) => `${r.agent}: ${r.verdict.replaceAll("-", " ")}${r.blocker + r.major + r.minor + r.question ? ` (${r.blocker}B ${r.major}M ${r.minor}m ${r.question}Q)` : ""}`).join("; ") || "–";
+  (reviews ?? [])
+    .map((r) => `${r.agent}: ${r.verdict.replaceAll("-", " ")}${r.blocker + r.major + r.minor + r.question ? ` (${r.blocker}B ${r.major}M ${r.minor}m ${r.question}Q${r.skip ? `, ${r.skip} skipped` : ""})` : ""}`)
+    .join("; ") || "–";
 const cell = (v: string): string => v.replaceAll("|", "\\|").replaceAll("\n", " ");
 const passes = (attempts: number | undefined, resumed: number | undefined): string => `${attempts ?? 0}${resumed ? ` (${resumed} after a cut-off)` : ""}`;
 
@@ -803,7 +856,8 @@ export function renderSummary(state: e.MarathonState, titles: Map<string, string
     ...state.escalations.flatMap((x) => (x.openQuestions ?? []).map((q) => ({ story: x.story, q }))),
     ...Object.entries(state.results).filter(([id]) => !escalated.has(id)).flatMap(([id, r]) => (r.openQuestions ?? []).map((q) => ({ story: id, q }))),
   ];
-  out.push("## Open questions", "");
+  // Only what needs the user: a product or domain decision of a merged story, the questions an escalated story waits on.
+  out.push("## Open questions – your decision", "");
   if (!questions.length) out.push("None.", "");
   else {
     for (const { story, q } of questions) out.push(`- **${story}** (${q.kind}): ${q.question}`);
@@ -819,14 +873,15 @@ export function renderSummary(state: e.MarathonState, titles: Map<string, string
     out.push("");
   }
 
-  // Technical details a worker settled with a default instead of blocking – merged, waiting for the user's nod.
+  // Details settled with a conservative default instead of blocking – by a worker, or a reviewer question the
+  // orchestrator decided – merged, waiting for the user's nod. One line each.
   const decided: { story: string; x: e.MarathonDecision }[] = [
     ...Object.entries(state.results).filter(([, r]) => r.outcome === "merged").flatMap(([id, r]) => (r.decisions ?? []).map((x) => ({ story: id, x }))),
     ...state.escalations.flatMap((s) => (s.decisions ?? []).map((x) => ({ story: s.story, x }))),
   ];
   if (decided.length) {
     out.push("## Decided with a default – confirm or change", "");
-    for (const { story, x } of decided) out.push(`- **${story}**: ${x.question} → **${x.decision}** – ${x.why}`);
+    for (const { story, x } of decided) out.push(`- **${story}**: ${cell(x.question)} → **${cell(x.decision)}** – ${cell(x.why)}${x.by === "orchestrator" ? " (decided by the orchestrator, on the reviewer's recommendation)" : ""}`);
     out.push("");
   }
 

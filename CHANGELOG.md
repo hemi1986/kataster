@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.8.0 – 2026-11-28
+
+A minor release: the marathon fixes every review finding inside its story, as `/implement` does, and a run leaves no
+follow-up stories behind. **Read *Behaviour changes* before you upgrade.**
+
+### Behaviour changes
+
+- **One fix pass gets every finding.** A review round with any finding – blocker, major, minor or question – sends
+  the worker one pass with all of them. Two exceptions, counted with the new `marathon-state.ts review … --skip <n>`:
+  a minor the reviewer itself marks as not worth fixing (a note `minor skipped: <finding> – <reason>`), and a
+  question that is a real product or domain decision (an open question, or an escalation when it blocks the story).
+  Before, minors and questions alone went to the merge and ended up in the pull request summary – in one real run
+  6 stories left 8 skipped minors and 17 open questions.
+- **The orchestrator decides questions with a conservative default.** A reviewer question with a sensible default
+  goes into the worker's task as a finding with that default named, and into `decisions` with
+  `"by": "orchestrator"`. The worker still decides nothing on its own; it gets decided defaults instead of raw
+  questions and reports them as `fixed`, never as `blocked`.
+- **No second review for minor fixes.** A pass for minors and decided questions alone ends with `THEN the merge – no
+  second review`, and it is the story's only one (`minorPass` on the claim). Blockers, majors and merge blockers keep
+  the rule they had: a `not accepted` verdict or a merge blocker sends the reviewer who gave it in again; the loop
+  limits (`not accepted` twice, a merge blocker that survives its fix pass) are unchanged.
+- **The merge gate checks what is left.** `merge-check` and `result … merged` refuse a merge while the last round's
+  findings wait for their fix pass, a `minor skipped` note has no reason, or an open question is `technical` (only
+  `domain` or `product` questions stay open – a technical one gets its default).
+- **No follow-up stories.** No step of the marathon creates a story. A gap in the feature's story split becomes an
+  open question suggesting to widen a story of the same feature that is not built yet.
+- **A shorter summary.** *Open questions – your decision* lists only what needs the user; decisions taken with a
+  default stay in their own section, one line each, marked when the orchestrator took them.
+- **The same rule in `/implement`.** Step 6 fixes every finding in one pass – minors too – and decides a question
+  with a defensible default; only a real product or domain decision goes to the developer. The reviewers say
+  `no fix – <why>` for a minor that is not worth fixing and give their recommended answer to a question.
+
 ## 0.7.1 – 2026-11-27
 
 A patch release with two fixes to `/adopt`'s repository map, found in a brownfield project during `/marathon`.
