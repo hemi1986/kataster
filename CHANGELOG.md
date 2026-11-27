@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.7.1 – 2026-11-27
 
-### Fixes
+A patch release with two fixes to `/adopt`'s repository map, found in a brownfield project during `/marathon`.
 
 - **The repository map keeps concept slices adopted by meaning.** A slice marked with `repo-map.ts --adopt-slice
   <name>` whose name matches no generated cluster (`/adopt` names a domain by meaning, the scanner a cluster by file
