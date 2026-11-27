@@ -13,6 +13,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
+import { ignoredDirs } from "./git.ts";
 import { globToRegExp } from "./glob.ts";
 import type { RepoMap, RepoPackage } from "./repo.ts";
 
@@ -140,7 +141,7 @@ export function conceptStems(path: string): string[] {
   return [...new Set(tokenize(name).filter((token) => !LAYER_WORDS.has(token)))];
 }
 
-function walk(dir: string, out: string[], root: string): void {
+function walk(dir: string, out: string[], root: string, ignored: Set<string> | null): void {
   if (out.length >= MAX_FILES) return;
   let entries;
   try {
@@ -152,17 +153,22 @@ function walk(dir: string, out: string[], root: string): void {
     if (out.length >= MAX_FILES) return;
     if (entry.isDirectory()) {
       if (IGNORED.has(entry.name) || entry.name.startsWith(".")) continue;
-      walk(join(dir, entry.name), out, root);
+      const path = join(dir, entry.name);
+      if (ignored?.has(relative(root, path).split("\\").join("/"))) continue;
+      walk(path, out, root, ignored);
     } else if (entry.isFile() && CODE_EXT.has(extname(entry.name))) {
       out.push(relative(root, join(dir, entry.name)).split("\\").join("/"));
     }
   }
 }
 
-/** All source and schema files in the repository, repository-relative POSIX paths. */
-export function sourceFiles(root: string): string[] {
+/**
+ * All source and schema files in the repository, repository-relative POSIX paths. Directories git ignores (build
+ * output, local copies) are skipped; `ignored` is the result of `ignoredDirs`, computed once per scan.
+ */
+export function sourceFiles(root: string, ignored: Set<string> | null = ignoredDirs(root)): string[] {
   const out: string[] = [];
-  walk(root, out, root);
+  walk(root, out, root, ignored);
   return out.sort();
 }
 

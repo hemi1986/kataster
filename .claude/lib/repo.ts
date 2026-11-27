@@ -17,6 +17,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { ignoredDirs } from "./git.ts";
 import { graphLabel, graphOrigin, graphToolLabel, queryToolGraph, type ToolGraph } from "./toolgraph.ts";
 import { classifyPackageRoles, clusterSlices, sourceFiles, type PackageRole, type SliceSuggestion } from "./slices.ts";
 
@@ -242,7 +243,13 @@ interface ManifestFile {
   path: string;
 }
 
-function findManifests(root: string): ManifestFile[] {
+/** A directory the scan never enters: a fixed build/tool name, a dot directory or one git ignores. */
+function skipDir(root: string, dir: string, name: string, ignored: Set<string> | null): boolean {
+  if (IGNORED.has(name) || name.startsWith(".")) return true;
+  return ignored !== null && ignored.has(projectPath(root, join(dir, name)));
+}
+
+function findManifests(root: string, ignored: Set<string> | null): ManifestFile[] {
   const found: ManifestFile[] = [];
   const walk = (dir: string): void => {
     let entries;
@@ -253,7 +260,7 @@ function findManifests(root: string): ManifestFile[] {
     }
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        if (IGNORED.has(entry.name) || entry.name.startsWith(".")) continue;
+        if (skipDir(root, dir, entry.name, ignored)) continue;
         walk(join(dir, entry.name));
       } else if (entry.isFile() && (MANIFESTS as readonly string[]).includes(entry.name)) {
         found.push({ dir, name: entry.name, path: join(dir, entry.name) });
@@ -474,7 +481,7 @@ function languageForDir(dir: string): string {
 }
 
 /** Bazel packages are directories with a BUILD file, not directories with a manifest. */
-function findBuildDirs(root: string, limit = 500): { dir: string; file: string }[] {
+function findBuildDirs(root: string, ignored: Set<string> | null, limit = 500): { dir: string; file: string }[] {
   const out: { dir: string; file: string }[] = [];
   const walk = (dir: string): void => {
     if (out.length >= limit) return;
@@ -486,7 +493,7 @@ function findBuildDirs(root: string, limit = 500): { dir: string; file: string }
     }
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        if (IGNORED.has(entry.name) || entry.name.startsWith(".")) continue;
+        if (skipDir(root, dir, entry.name, ignored)) continue;
         walk(join(dir, entry.name));
       } else if (entry.isFile() && (entry.name === "BUILD" || entry.name === "BUILD.bazel")) {
         out.push({ dir, file: entry.name });
@@ -520,7 +527,10 @@ function resolveWorkspaceDep(name: string, version: string, packages: RepoPackag
 
 export function scanRepo(root: string, options: { toolGraph?: boolean } = {}): RepoMap {
   const tooling = detectTooling(root);
-  const manifests = findManifests(root);
+  // Git-ignored build output (a local copy of the workspace, say) is not part of the repository; without git the
+  // fixed IGNORED names are all there is.
+  const ignored = ignoredDirs(root);
+  const manifests = findManifests(root, ignored);
 
   const packages: RepoPackage[] = [];
   for (const file of manifests) {
@@ -550,7 +560,7 @@ export function scanRepo(root: string, options: { toolGraph?: boolean } = {}): R
   // so a Bazel repository can be sliced even when it has no package.json.
   if (tooling.kind === "bazel") {
     const seen = new Set(packages.map((p) => p.path));
-    for (const build of findBuildDirs(root)) {
+    for (const build of findBuildDirs(root, ignored)) {
       const path = projectPath(root, build.dir);
       if (path === "." || seen.has(path)) continue;
       seen.add(path);
@@ -621,7 +631,7 @@ export function scanRepo(root: string, options: { toolGraph?: boolean } = {}): R
 
   // A layered repository needs concept slices: generic packages such as services/ or utils/ host many concepts
   // and must not be proposed as a domain. The scan is shared by the role assignment and the clustering.
-  const files = sourceFiles(root);
+  const files = sourceFiles(root, ignored);
   const roles = classifyPackageRoles(root, packages, files);
   for (const pkg of packages) {
     const role = roles.get(pkg.path);
@@ -1292,6 +1302,39 @@ export function markSliceAdopted(root: string, name: string, date = new Date().t
   writeRepoMap(root, map);
   writeRootBlock(root, map);
   return map;
+}
+
+/**
+ * Carries what only the user decides – adoption – from the checked-in map into a fresh scan. A package or slice the
+ * scan still finds keeps its `adopted`/`adoptedAt`; an adopted slice the scan no longer produces (named by meaning
+ * via `--adopt-slice`, so no cluster matches it) is kept unchanged. A package that is gone stays gone.
+ */
+export function carryAdoption(map: RepoMap, previous: RepoMap | undefined): RepoMap {
+  if (!previous) return map;
+  for (const pkg of map.packages) {
+    const old = previous.packages.find((p) => p.path === pkg.path);
+    if (old?.adopted) {
+      pkg.adopted = true;
+      pkg.adoptedAt = old.adoptedAt;
+    }
+  }
+  const slices = map.slices ?? [];
+  for (const slice of slices) {
+    const old = previous.slices?.find((entry) => entry.name === slice.name);
+    if (old?.adopted) {
+      slice.adopted = true;
+      slice.adoptedAt = old.adoptedAt;
+    }
+  }
+  const scanned = new Set(slices.map((slice) => slice.name));
+  const kept = (previous.slices ?? []).filter((slice) => slice.adopted && !scanned.has(slice.name));
+  if (kept.length) map.slices = [...slices, ...kept];
+  return map;
+}
+
+/** A fresh scan with the adoption of the checked-in map carried over – what both the write and `--check` compare. */
+export function refreshRepoMap(root: string, options: { toolGraph?: boolean } = {}): RepoMap {
+  return carryAdoption(scanRepo(root, options), readRepoMap(root));
 }
 
 /** Stable view for staleness checks: generated docs and ranking may change with history. */

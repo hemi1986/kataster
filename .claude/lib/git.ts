@@ -36,3 +36,18 @@ export function changedPaths(root: string): string[] {
 /** Collected metrics are bookkeeping, not work: they never make a tree dirty for the workflow. */
 export const METRICS_DIR = "docs/stories/metrics/";
 export const isMetricsPath = (path: string): boolean => path.startsWith(METRICS_DIR);
+
+/**
+ * Directories git ignores below `root`, as `root`-relative POSIX paths without a trailing slash – one
+ * `git ls-files` call. A directory that still holds tracked files is not listed (git names its files instead), so
+ * skipping these never hides tracked code. Null when `root` is not in a git work tree or git is missing.
+ */
+export function ignoredDirs(root: string): Set<string> | null {
+  const out = gitRaw(root, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"]);
+  if (out === null) return null;
+  const dirs = new Set<string>();
+  for (const entry of out.split("\0")) {
+    if (entry.endsWith("/")) dirs.add(entry.slice(0, -1));
+  }
+  return dirs;
+}

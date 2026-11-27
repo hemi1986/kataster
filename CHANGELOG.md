@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **The repository map keeps concept slices adopted by meaning.** A slice marked with `repo-map.ts --adopt-slice
+  <name>` whose name matches no generated cluster (`/adopt` names a domain by meaning, the scanner a cluster by file
+  stem) was dropped by the next `repo-map.ts` run, and marking it again made `--check` report the map as stale – so
+  the `/marathon` merge gate refused every merge. A refresh now keeps an adopted slice the scan no longer produces,
+  unchanged and with its `adoptedAt`; the write and `--check` share one carry-over (`refreshRepoMap` in
+  `lib/repo.ts`).
+- **Git-ignored directories are not scanned.** Build output git ignores (e.g. a `runtime/` directory holding a copy
+  of the workspace) no longer adds duplicate packages and cluster files to the map, so `--check` no longer depends
+  on what happens to be built locally. One `git ls-files --ignored` call per scan; without git the fixed list of
+  build directory names applies as before.
+
 ## 0.7.0 – 2026-11-26
 
 A minor release with three new features – story metrics, the worker mode of `/implement` and the marathon run – and a
